@@ -1,5 +1,5 @@
 /**
- * DSH for JetBrains —— Client 半边（浏览器，纯 IDE 桥，无 UI / 无 React）。
+ * DSH for Desktop —— Client 半边（浏览器，纯 IDE 桥，无 UI / 无 React）。
  * 职责：ideWorkspace 选中当前项目、文件在 IDE 打开、IDE 右键 @引用 插入输入框。
  * 依赖 Kotlin 注入的 window.__dshIdeOpenFile / window.__dshIdePush。
  * 单文件拆类：WorkspaceFilter / FileOpenBridge / ComposerBridge / WorkspaceActivator / IdeBridge。
@@ -324,6 +324,16 @@ window.__ModuleLoader__.load({
           else section.setAttribute(HIDE_ATTR, '')
         })
         this.hideWorkspaceChrome()
+        this.hideConversationHeaderActions()
+      }
+      /**
+       * 会话顶部右侧的操作区在 IDE 里没有意义：「用资源管理器打开」、更多操作、
+       * 「打开右侧边栏」都由 IDE 侧接管。headerCorner 官方带 data-conversation-header-corner，
+       * headerUtilities 只有 CSS Modules 类名（当前仅 ui-conversation 使用）。
+       */
+      hideConversationHeaderActions() {
+        document.querySelectorAll('[class*="_headerUtilities"], [data-conversation-header-corner]')
+          .forEach((el) => el.setAttribute(HIDE_ATTR, ''))
       }
       /**
        * IDE 里工作区由 `ideWorkspace` 固定，侧栏的「工作区」标题、搜索/视图/新建工作区按钮，

@@ -1,15 +1,46 @@
-<!-- DSH for JetBrains -->
+<!-- DSH for Desktop -->
 <idea-plugin>
     <id>dev.doyzheng.dsh-ide</id>
-    <name>DSH for JetBrains</name>
+    <name>DSH for Desktop</name>
     <version>0.8.0</version>
     <vendor>doyzheng</vendor>
 
     <description><![CDATA[
-      在 JetBrains IDE 侧边栏中使用 DeepSeek Harness。
-      <p>与官方桌面端共享同一个 DSH home：凭据、设置、会话历史互通；
+      <p>DSH for Desktop brings DeepSeek Harness into your JetBrains IDE as a side panel.</p>
+
+      <p><b>Features</b></p>
+      <ul>
+        <li>A dedicated tool window hosting the DSH web UI (JCEF).</li>
+        <li>One DSH process per IDE; the current project is selected through <code>ideWorkspace</code>.</li>
+        <li>Reuses the official DeepSeek Harness desktop runtime and shares <code>~/.dsh</code> (credentials, settings, session history).</li>
+        <li>IDE bridge: click a file to open it in the IDE, right-click a file or an editor selection to insert an <code>@reference</code> into the composer, and keep the sidebar scoped to the current project.</li>
+        <li>On first run, the DSH language and theme are aligned with the IDE.</li>
+      </ul>
+
+      <p><b>Requirements</b></p>
+      <ul>
+        <li>A JetBrains IDE based on the 2024.3 platform or newer with the integrated JCEF browser.</li>
+        <li>The official DeepSeek Harness desktop application. When it is not installed, DSH for Desktop asks for your confirmation and then downloads the installer from <code>download.deepseek.com</code>.</li>
+      </ul>
+
+      <p><b>Privacy</b></p>
+      <p>DSH for Desktop does not collect telemetry. It talks only to the local DSH server on <code>127.0.0.1</code> and, when you approve the installation of the desktop client, to <code>download.deepseek.com</code>. See the privacy policy for details.</p>
+
+      <p><i>DSH for Desktop is an independent, community-built integration. It is not affiliated with, endorsed by, or sponsored by JetBrains or DeepSeek.</i></p>
+
+      <p><b>中文</b></p>
+      <p>在 JetBrains IDE 的侧边栏中使用 DeepSeek Harness：工具窗口内嵌 DSH 页面，与官方桌面端共享 <code>~/.dsh</code>；
       全 IDE 只运行一个 dsh 服务，项目通过 <code>ideWorkspace</code> 区分。</p>
     ]]></description>
+
+    <change-notes><![CDATA[
+      <ul>
+        <li>Initial public release: DSH web UI in a tool window, one DSH process per IDE, shared <code>~/.dsh</code> profile.</li>
+        <li>IDE bridge: open files in the IDE, insert file or selection references into the composer, project-scoped sidebar.</li>
+        <li>Automatic detection and installation of the official DeepSeek Harness desktop client.</li>
+        <li>Language and theme follow the IDE on first run.</li>
+      </ul>
+    ]]></change-notes>
 
     <idea-version since-build="243" until-build="262.*"/>
 

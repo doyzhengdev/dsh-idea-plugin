@@ -1,6 +1,6 @@
 # deploy-dsh-ide-plugin / scripts
 
-部署与验证 DSH for JetBrains 时反复用到的小工具。**优先用这里的脚本，不要每次临时重写。**
+部署与验证 DSH for Desktop 时反复用到的小工具。**优先用这里的脚本，不要每次临时重写。**
 
 所有 `.ps1` 里的坐标都是相对 **IDE 主窗口左上角**；先用 `ide-capture.ps1` 截一张图，
 按截图里的位置传 `-X` / `-Y`。

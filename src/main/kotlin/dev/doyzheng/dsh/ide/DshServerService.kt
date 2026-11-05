@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.SystemInfo
 import dev.doyzheng.dsh.ide.client.DshClientInstall
 import dev.doyzheng.dsh.ide.client.DshClientProvisioner
+import dev.doyzheng.dsh.ide.client.DshDesktopClient
 import dev.doyzheng.dsh.ide.jetbrains.ProfileManager
 import java.io.BufferedReader
 import java.io.File
@@ -21,7 +22,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-enum class DshState { STOPPED, STARTING, RUNNING, FAILED }
+enum class DshState { STOPPED, STARTING, RUNNING, FAILED, NEED_CLIENT }
 
 data class DshStatus(
     val state: DshState = DshState.STOPPED,
@@ -69,6 +70,10 @@ class DshServerService : Disposable {
     @Volatile
     private var stopRequested = false
 
+    /** 用户已在状态页确认「下载并安装」官方客户端；仅本次启动有效。 */
+    @Volatile
+    private var allowClientInstall = false
+
     fun currentStatus(): DshStatus = status.get()
 
     fun addListener(listener: (DshStatus) -> Unit) {
@@ -96,6 +101,12 @@ class DshServerService : Disposable {
     fun restartAsync() = lifecycle.execute {
         stopInternal()
         startInternal()
+    }
+
+    /** 状态页「下载并安装」：用户显式确认后才允许下载安装官方客户端，然后继续启动。 */
+    fun installClientAndStartAsync() {
+        allowClientInstall = true
+        startAsync()
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -139,8 +150,15 @@ class DshServerService : Disposable {
         mark("profile 与插件注入完成")
 
         // 依赖官方桌面客户端：复用其安装目录里携带的运行时（Electron 以 node 模式运行内嵌 CLI）。
-        // 未安装客户端时自动按系统下载安装包并安装（下载较大，放在后台 lifecycle 线程）。
+        // 未安装客户端时不自动下载（那等于未经同意安装第三方软件）：停在 NEED_CLIENT 状态页，
+        // 由用户点击「下载并安装」后再次启动，此时 allowClientInstall 才放行。
         val client = if (DshCommandResolver.isAutoConfigured(settings.dshCommand)) {
+            if (DshDesktopClient.locate() == null && !allowClientInstall) {
+                log.info("未检测到官方客户端，等待用户确认下载安装")
+                publish(DshStatus(DshState.NEED_CLIENT, port = settings.port))
+                return
+            }
+            allowClientInstall = false
             val ensured = runCatching {
                 DshClientProvisioner.ensure { message ->
                     publish(DshStatus(DshState.STARTING, port = settings.port, detail = message))

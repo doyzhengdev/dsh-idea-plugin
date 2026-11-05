@@ -1,9 +1,9 @@
 ---
 name: deploy-dsh-ide-plugin
-description: 把 DSH for JetBrains 插件的构建产物部署到本机 IntelliJ IDEA，流程是“打包 → 关闭 IDE → 替换插件目录 → 重启 → 验证”。当用户说“打包插件”“部署到 IDEA”“替换插件”“装到 IDEA 里看看”“改完 Kotlin 需要看效果”，或者要在真实 IDE 里验证 DSH 工具窗口时，使用本 skill。只改代码、不要求在 IDE 里看效果时不要用。
+description: 把 DSH for Desktop 插件的构建产物部署到本机 IntelliJ IDEA，流程是“打包 → 关闭 IDE → 替换插件目录 → 重启 → 验证”。当用户说“打包插件”“部署到 IDEA”“替换插件”“装到 IDEA 里看看”“改完 Kotlin 需要看效果”，或者要在真实 IDE 里验证 DSH 工具窗口时，使用本 skill。只改代码、不要求在 IDE 里看效果时不要用。
 ---
 
-# 部署 DSH for JetBrains 插件到本机 IDEA
+# 部署 DSH for Desktop 插件到本机 IDEA
 
 本 skill 替代 Settings → Plugins → Install Plugin from Disk：直接替换已安装插件目录，重启 IDE 生效。
 IntelliJ 的自定义插件没有额外注册表，`plugins/` 下就是一个目录，启动时扫描；

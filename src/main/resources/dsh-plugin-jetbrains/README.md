@@ -1,4 +1,4 @@
-# dsh-plugin-jetbrains —— DSH for JetBrains 的 DSH 侧插件
+# dsh-plugin-jetbrains —— DSH for Desktop 的 DSH 侧插件
 
 `dsh-ide` 项目的 DSH 插件半边：一个纯 JS 的 Cordis 插件，把 DSH Web UI 与 IDE 打通。
 检测/安装客户端、profile 管理、启动宿主等全部在 IDEA 插件（Kotlin）里，本插件不提供设置页面。

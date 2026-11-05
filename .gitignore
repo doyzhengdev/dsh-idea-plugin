@@ -15,6 +15,18 @@ out/
 # Gradle Wrapper 的 jar 必须入库，否则 clone 后无法运行 wrapper
 !gradle/wrapper/gradle-wrapper.jar
 
+# 发布签名证书（私钥绝不入库）
+certificate/
+*.p12
+*.pem
+*.crt
+*.csr
+
 # OS
 Thumbs.db
 .DS_Store
+
+# 本地临时文件 / 浏览器自动化产物
+.tmp/
+.playwright-mcp/
+

@@ -173,6 +173,13 @@ class DshPanel(private val project: Project) : Disposable {
                     progress = downloading || installing,
                 )
             }
+            DshState.NEED_CLIENT -> showStatusPage(
+                title = "需要 DeepSeek Harness 客户端",
+                detail = "DSH for Desktop 复用官方 DeepSeek Harness 桌面客户端的运行时。\n" +
+                    "点击下方按钮后，将从 download.deepseek.com 下载安装包并安装（约 276 MB）。",
+                action = StatusAction("install-client", "下载并安装"),
+                loading = false,
+            )
             DshState.FAILED -> showStatusPage(
                 title = "DSH 启动失败",
                 detail = status.detail ?: "未知原因",
@@ -274,8 +281,9 @@ class DshPanel(private val project: Project) : Disposable {
         // 状态页按钮（重试 / 启动）→ Kotlin。
         val statusQuery = JBCefJSQuery.create(target)
         statusQuery.addHandler { action ->
-            if (action == "retry" || action == "start") {
-                SwingUtilities.invokeLater { service.startAsync() }
+            when (action) {
+                "retry", "start" -> SwingUtilities.invokeLater { service.startAsync() }
+                "install-client" -> SwingUtilities.invokeLater { service.installClientAndStartAsync() }
             }
             null
         }

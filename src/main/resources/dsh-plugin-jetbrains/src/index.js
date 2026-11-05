@@ -1,5 +1,5 @@
 /**
- * DSH for JetBrains —— Host 半边。
+ * DSH for Desktop —— Host 半边。
  *
  * 负责两件事：
  *  1. 浏览器 localStorage 跨端口快照：

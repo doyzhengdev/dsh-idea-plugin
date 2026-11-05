@@ -1,6 +1,7 @@
-# HANDOFF — DSH for JetBrains
+# HANDOFF — DSH for Desktop
 
 > 交接文档。设计细节见 [`.agents/docs/architecture.md`](.agents/docs/architecture.md)；
+> 发布流程见 [`.agents/docs/marketplace-publish.md`](.agents/docs/marketplace-publish.md)；
 > 协作规则见 [`AGENTS.md`](AGENTS.md)（能直接做的操作一律自己做，不要让用户手动操作）。
 > 最后更新：2026-11-05
 
@@ -18,6 +19,7 @@
 | 部件 | 位置 | 职责 |
 |---|---|---|
 | IDEA 插件（Kotlin） | `src/main/kotlin/`、`src/main/resources/META-INF/` | 托管 DSH Web（JCEF）、启动/停止宿主、设置弹窗、profile 管理 |
+| Marketplace 发布 | `.agents/docs/marketplace-publish.md` | 名称/描述合规、签名、verifier、上传步骤 |
 | DSH 侧插件 Host 半边 | `src/main/resources/dsh-plugin-jetbrains/src/index.js` | localStorage 快照路由；首次启动经官方 `configEditor` 写入语言/主题 |
 | DSH 侧插件 Client 半边 | `src/main/resources/dsh-plugin-jetbrains/src/client.js` | ideWorkspace 选中项目、文件在 IDE 打开、右键 @引用 插入输入框、工作区过滤 |
 | 官方客户端适配 | `src/main/kotlin/.../client/` | 检测/下载安装客户端、定位内嵌 CLI |
@@ -84,6 +86,7 @@ Host 半边提供 `/dsh-ide/storage/load|save`，快照存 `<profile.dir>/web-st
 - 工作区过滤：`ideWorkspace` 由 IDE 固定，侧栏隐藏「工作区」标题、搜索/视图/新建工作区按钮和项目行，
   只保留当前项目的会话分组（属性标记 + MutationObserver）；收起成图标条时 rail 上的
   「添加工作区」「搜索会话」控件也隐藏。
+- 顶部操作区：会话 header 右侧的「用资源管理器打开」、更多操作、打开右侧边栏按钮整块隐藏。
 
 ### 4.6 启动状态页（HTML）
 
@@ -113,11 +116,15 @@ cd /e/gitee/doyzheng/dsh-ide
 export JAVA_HOME=/d/apps/jdk/jdk-21.0.2      # 默认 JAVA_HOME 是 JDK 8
 ./gradlew buildPlugin --offline -x test --console=plain
 # 产物：build/distributions/dsh-idea-plugin-0.8.0.zip
+
+./gradlew signPlugin -x test --console=plain   # 需要 certificate/（已 gitignore）
+# 产物：build/distributions/dsh-idea-plugin-0.8.0-signed.zip
 ```
 
-迭代期不跑 `test`；只验证测试源码能编译时用 `./gradlew compileTestKotlin --offline`。
+迭代期不跑 `test`；只验证测试源码能编译时用 `./gradlew compileTestKotlin --offline`；发版前跑 `./gradlew test --offline`。
 部署按 `.agents/skills/deploy-dsh-ide-plugin/`：关闭 IDE → 备份 `plugins/dsh-idea-plugin` →
 解压 zip 到 `plugins/` → 重启 IDE → 看 `idea.log` 的 `[dsh]` 行。
+发布到 Marketplace 见 `.agents/docs/marketplace-publish.md`（首次必须手动上传 signed zip）。
 
 ## 6. 本机环境
 
@@ -136,9 +143,12 @@ export JAVA_HOME=/d/apps/jdk/jdk-21.0.2      # 默认 JAVA_HOME 是 JDK 8
   IDE 桥 `window.__dshIdeComposerReady === true`。
 - 首次语言/主题初始化（临时删 marker 后重启）：日志出现 `[dsh-ide] 已按 IDEA 配置初始化 DSH 语言/主题`，
   `cordis.patch.yml` 的注释、entry 顺序与同级键保留，marker 由宿主重建。
+- Marketplace 准备：`buildPlugin` + `signPlugin` 产出 `dsh-idea-plugin-0.8.0-signed.zip`，
+  用 `ZipSigningTool verify` 校验通过；`./gradlew test --offline` 全量通过；`verifyPluginStructure` 通过。
 
 ## 8. 待办 / 已知限制
 
+- 发布阻塞（需要用户本人）：JetBrains Account 注册、vendor 官网/邮箱、公开源码仓库 URL、Marketplace 截图。
 - 官方 GitHub 诊断通道在本机不可达（网络原因，非插件问题）。
 - 仍建议人工体验确认：图标观感、暗色主题、多项目窗口切换、composer 正在输入时的引用插入行为。
 - DSH 客户端更新若改变 profile/plugin 语义，需要按 `.agents/docs/architecture.md` 的官方源码依据复核。

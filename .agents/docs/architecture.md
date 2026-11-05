@@ -1,4 +1,4 @@
-# DSH for JetBrains — 架构
+# DSH for Desktop — 架构
 
 > 源码位置：JetBrains 插件 `src/main/kotlin/`；DSH 侧插件 `src/main/resources/dsh-plugin-jetbrains/`。
 > 官方参考源码：`E:\github\deepseek-harness`（0.2.2-alpha.3）。本文的结论都可在该仓库对应文件复核。
@@ -74,6 +74,7 @@ Client 半边（`client.js`）在页面侧：
 - `ideWorkspace`：登记/切换到当前项目的工作区；侧栏隐藏「工作区」标题、搜索/视图/新建工作区按钮
   与项目行，只保留当前项目的会话分组（属性标记 + MutationObserver）；侧栏收起成图标条时，
   rail 上的「添加工作区」「搜索会话」控件同样隐藏；
+- 会话顶部右侧操作区（用资源管理器打开、更多操作、打开右侧边栏）也整块隐藏，这些动作由 IDE 接管；
 - 覆盖 `sidebarRight.openResource` / `openResourceIn`：文件树点击、右键「在 IDE 中打开」都走 IDE；
 - 外部链接统一交给 Kotlin 打开；composer 引用插入走 `__dshIdeInsertRefs`。
 

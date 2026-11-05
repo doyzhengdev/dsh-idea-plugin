@@ -1,4 +1,4 @@
-# DSH for JetBrains 与官方桌面端功能对齐分析
+# DSH for Desktop 与官方桌面端功能对齐分析
 
 > 分析对象：`E:\github\deepseek-harness\apps\desktop-host`（下称 **desktop-host**）与
 > `E:\github\deepseek-harness\apps\desktop`（下称 **desktop**），版本 `0.2.2-alpha.3`。

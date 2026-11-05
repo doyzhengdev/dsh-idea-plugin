@@ -40,9 +40,10 @@
   - Client 半边 `src/client.js`：IDE 桥（ideWorkspace / 打开文件 / 插入引用 / 侧栏过滤）
 - 管理功能（客户端检测/安装、profile 链接、一键修复、重启服务）：工具窗口右上角齿轮 → 设置弹窗
   - Kotlin：`settings/`（弹窗）、`client/`（官方客户端适配）、`jetbrains/`（profile 链接 / junction / 文件工具）
-- IDEA 插件（Kotlin，名 `dsh-idea-plugin`）：**仓库根即 Gradle 工程根**（`build.gradle.kts` / `src/` / `gradle/`）
+- IDEA 插件（Kotlin，工程名 `dsh-idea-plugin`，Marketplace 展示名 **DSH for Desktop**）：**仓库根即 Gradle 工程根**（`build.gradle.kts` / `src/` / `gradle/`）
   - 启动策略：IDE 启动完成后在后台启动宿主，但不展示 DSH 窗口；用户点击右侧 DSH 图标才显示
   - 构建：`./gradlew buildPlugin --offline`
+  - 签名 / 发布：`./gradlew signPlugin`，之后可用 `publishPlugin`；流程见 `.agents/docs/marketplace-publish.md`
   - 产物：`build/distributions/dsh-idea-plugin-<version>.zip`
 - 部署 IDEA 插件（`dsh-idea-plugin`）：`.agents/skills/deploy-dsh-ide-plugin/`（打包 → 关 IDE → 替换 → 重启 → 验证）
 - 分析官方源码：`.agents/skills/codegraph-dsh-source/`（先查 codegraph 索引，别先 grep）

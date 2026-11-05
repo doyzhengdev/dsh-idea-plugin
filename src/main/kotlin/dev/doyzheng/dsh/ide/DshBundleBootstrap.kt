@@ -45,7 +45,7 @@ object DshBundleBootstrap {
     const val OVERLAY_FILE_NAME = "dsh-plugin-jetbrains.patch.yml"
 
     private val OVERLAY_CONTENT = """
-        # DSH for JetBrains 插件自动维护：把 DSH 侧插件注入本 profile，请勿手改本文件。
+        # DSH for Desktop 插件自动维护：把 DSH 侧插件注入本 profile，请勿手改本文件。
         - insert:
             - id: $PACKAGE_NAME
               name: $PACKAGE_NAME

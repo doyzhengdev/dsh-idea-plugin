@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "DSH for JetBrains",
-    "description": "DSH for JetBrains 的 DSH 侧 IDE 桥：在 IDE 中打开文件、右键把文件/选区以 @引用 插入对话框、侧栏只显示当前项目。客户端检测/安装、Profile 管理与服务重启在 IDEA 插件的设置弹窗（工具窗口右上角齿轮）。"
+    "title": "DSH for Desktop",
+    "description": "DSH for Desktop 的 DSH 侧 IDE 桥：在 IDE 中打开文件、右键把文件/选区以 @引用 插入对话框、侧栏只显示当前项目。客户端检测/安装、Profile 管理与服务重启在 IDEA 插件的设置弹窗（工具窗口右上角齿轮）。"
   }
 }
