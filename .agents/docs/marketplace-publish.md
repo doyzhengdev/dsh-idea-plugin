@@ -9,14 +9,17 @@
 
 | 项 | 状态 |
 | --- | --- |
+| 插件页面 | <https://plugins.jetbrains.com/plugin/35833-dsh-for-desktop>（插件 ID 35833，审核中） |
+| 源码仓库 | <https://github.com/doyzhengdev/dsh-idea-plugin> |
+| Vendor | `doyzheng`（Vendor ID `doyzheng`，Non-trader） |
 | 插件展示名 | `DSH for Desktop`（原 `DSH for JetBrains` 含 “JetBrains”，会被直接驳回，已改名） |
 | 插件 id | `dev.doyzheng.dsh-ide`（不可再改，改了等于新插件） |
 | 版本 | `1.0.0` |
 | 签名 | 已用 `certificate/chain.crt` + `certificate/private.pem` 自签 |
 | 产物 | `build/distributions/dsh-idea-plugin-1.0.0-signed.zip` |
 | 许可证 | MIT（`LICENSE`） |
-| 隐私政策 | `PRIVACY.md` |
-| 兼容性检查 | `./gradlew verifyPluginStructure`（已通过）；`./gradlew verifyPlugin` 默认用本机安装的 IDEA 跑，CI 用 `-PverifyIdePath` 或 `ide("IC-2025.1")` |
+| 隐私政策 | PRIVACY.md，已在插件页登记链接 |
+| 兼容性检查 | `./gradlew verifyPluginStructure`（已通过）；`verifyPlugin` 本机对 IU-262.10968.63 结果为 Compatible |
 
 ## 2. 发布前必须由你提供的东西
 

@@ -4,6 +4,9 @@ JetBrains IDE 插件：在工具窗口中托管 DeepSeek Harness（DSH）Web UI�
 
 > Marketplace 展示名：**DSH for Desktop**；工程名 / 产物名仍为 `dsh-idea-plugin`；
 > 插件 id：`dev.doyzheng.dsh-ide`。
+>
+> - 源码仓库：<https://github.com/doyzhengdev/dsh-idea-plugin>
+> - Marketplace：<https://plugins.jetbrains.com/plugin/35833-dsh-for-desktop>
 
 - 宿主：应用级单例，一个 dsh 进程服务所有项目；项目通过 URL fragment `ideWorkspace` 区分
 - profile：默认 `idea`，链接到官方桌面端的 `desktop`，共享 `~/.dsh`（sessions / storages / 凭据）
@@ -19,7 +22,8 @@ JetBrains IDE 插件：在工具窗口中托管 DeepSeek Harness（DSH）Web UI�
 
 ## 安装
 
-- JetBrains Marketplace：搜索 **DSH for Desktop**，或下载 Release 里的 zip 通过 *Settings → Plugins → Install Plugin from Disk*。
+- JetBrains Marketplace：<https://plugins.jetbrains.com/plugin/35833-dsh-for-desktop>（搜索 **DSH for Desktop**）；
+  或下载 Release 里的 zip 通过 *Settings → Plugins → Install Plugin from Disk* 安装。
 - 支持 2024.3（build 243）及以上的 JetBrains IDE；需要内置 JCEF 浏览器。
 
 ## 构建

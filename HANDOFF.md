@@ -148,7 +148,10 @@ export JAVA_HOME=/d/apps/jdk/jdk-21.0.2      # 默认 JAVA_HOME 是 JDK 8
 
 ## 8. 待办 / 已知限制
 
-- 发布阻塞（需要用户本人）：JetBrains Account 注册、vendor 官网/邮箱、公开源码仓库 URL、Marketplace 截图。
+- 已开源并提交 Marketplace 审核：仓库 <https://github.com/doyzhengdev/dsh-idea-plugin>，
+  插件页 <https://plugins.jetbrains.com/plugin/35833-dsh-for-desktop>（vendor `doyzheng`）。
+- 审核结果由 JetBrains 发到账号邮箱（约 2 个工作日）；通过后插件才公开可见。
+- 待补：插件截图（1280×800，1–3 张）；可选填 Documentation URL / Bugtracker。
 - 官方 GitHub 诊断通道在本机不可达（网络原因，非插件问题）。
 - 仍建议人工体验确认：图标观感、暗色主题、多项目窗口切换、composer 正在输入时的引用插入行为。
 - DSH 客户端更新若改变 profile/plugin 语义，需要按 `.agents/docs/architecture.md` 的官方源码依据复核。
