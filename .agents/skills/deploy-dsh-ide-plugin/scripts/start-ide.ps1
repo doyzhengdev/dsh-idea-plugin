@@ -1,4 +1,4 @@
-# 启动本机 IDE 并打开插件工程
+﻿# 启动本机 IDE 并打开插件工程
 #
 # 对应 SKILL.md 第 4 步。窗口出现约需 30–45 秒，别在启动过程中抓状态。
 #
@@ -8,7 +8,7 @@
 
 param(
     [string]$IdePath = "C:\Program Files\JetBrains\IntelliJ IDEA 2026.2.2\bin\idea64.exe",
-    [string]$ProjectPath = "E:\gitee\doyzheng\dsh-ide\dsh-idea-plugin",
+    [string]$ProjectPath = "E:\gitee\doyzheng\dsh-ide",
     [int]$WaitSeconds = 0
 )
 
