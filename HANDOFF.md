@@ -115,10 +115,10 @@ Windows 启动热路径不要调用 PowerShell：冷启动一次约 1.5s；profi
 cd /e/gitee/doyzheng/dsh-ide
 export JAVA_HOME=/d/apps/jdk/jdk-21.0.2      # 默认 JAVA_HOME 是 JDK 8
 ./gradlew buildPlugin --offline -x test --console=plain
-# 产物：build/distributions/dsh-idea-plugin-0.8.0.zip
+# 产物：build/distributions/dsh-idea-plugin-1.0.0.zip
 
 ./gradlew signPlugin -x test --console=plain   # 需要 certificate/（已 gitignore）
-# 产物：build/distributions/dsh-idea-plugin-0.8.0-signed.zip
+# 产物：build/distributions/dsh-idea-plugin-1.0.0-signed.zip
 ```
 
 迭代期不跑 `test`；只验证测试源码能编译时用 `./gradlew compileTestKotlin --offline`；发版前跑 `./gradlew test --offline`。
@@ -143,7 +143,7 @@ export JAVA_HOME=/d/apps/jdk/jdk-21.0.2      # 默认 JAVA_HOME 是 JDK 8
   IDE 桥 `window.__dshIdeComposerReady === true`。
 - 首次语言/主题初始化（临时删 marker 后重启）：日志出现 `[dsh-ide] 已按 IDEA 配置初始化 DSH 语言/主题`，
   `cordis.patch.yml` 的注释、entry 顺序与同级键保留，marker 由宿主重建。
-- Marketplace 准备：`buildPlugin` + `signPlugin` 产出 `dsh-idea-plugin-0.8.0-signed.zip`，
+- Marketplace 准备：`buildPlugin` + `signPlugin` 产出 `dsh-idea-plugin-1.0.0-signed.zip`，
   用 `ZipSigningTool verify` 校验通过；`./gradlew test --offline` 全量通过；`verifyPluginStructure` 通过。
 
 ## 8. 待办 / 已知限制

@@ -11,9 +11,9 @@
 | --- | --- |
 | 插件展示名 | `DSH for Desktop`（原 `DSH for JetBrains` 含 “JetBrains”，会被直接驳回，已改名） |
 | 插件 id | `dev.doyzheng.dsh-ide`（不可再改，改了等于新插件） |
-| 版本 | `0.8.0` |
+| 版本 | `1.0.0` |
 | 签名 | 已用 `certificate/chain.crt` + `certificate/private.pem` 自签 |
-| 产物 | `build/distributions/dsh-idea-plugin-0.8.0-signed.zip` |
+| 产物 | `build/distributions/dsh-idea-plugin-1.0.0-signed.zip` |
 | 许可证 | MIT（`LICENSE`） |
 | 隐私政策 | `PRIVACY.md` |
 | 兼容性检查 | `./gradlew verifyPluginStructure`（已通过）；`./gradlew verifyPlugin` 默认用本机安装的 IDEA 跑，CI 用 `-PverifyIdePath` 或 `ide("IC-2025.1")` |
@@ -52,7 +52,7 @@ Marketplace 的两步都需要**账号本人**操作，我无法代办：
    | --- | --- |
    | Plugin name | `DSH for Desktop` |
    | Plugin ID | `dev.doyzheng.dsh-ide` |
-   | Upload plugin | `build/distributions/dsh-idea-plugin-0.8.0-signed.zip` |
+   | Upload plugin | `build/distributions/dsh-idea-plugin-1.0.0-signed.zip` |
    | License | MIT（Open source） |
    | Source code URL | 你的公开仓库地址 |
    | Vendor | `doyzheng` + 官网 URL + 邮箱 |

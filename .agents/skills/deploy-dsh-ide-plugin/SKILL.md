@@ -18,7 +18,7 @@ IntelliJ 的自定义插件没有额外注册表，`plugins/` 下就是一个目
 |---|---|
 | 项目根 | `E:\gitee\doyzheng\dsh-ide` |
 | Kotlin 工程根（Gradle 工作目录） | `E:\gitee\doyzheng\dsh-ide`（仓库根） |
-| 构建产物 | `build\distributions\dsh-idea-plugin-<version>.zip`（version 见 `build.gradle.kts`，当前 `0.8.0`） |
+| 构建产物 | `build\distributions\dsh-idea-plugin-<version>.zip`（version 见 `build.gradle.kts`，当前 `1.0.0`） |
 | 已安装插件目录 | `C:\Users\ZDY\AppData\Roaming\JetBrains\IntelliJIdea2026.2\plugins\dsh-idea-plugin` |
 | 插件设置文件 | `C:\Users\ZDY\AppData\Roaming\JetBrains\IntelliJIdea2026.2\options\dsh-ide.xml`（component `DshIdeSettings`） |
 | IDE 可执行文件 | `C:\Program Files\JetBrains\IntelliJ IDEA 2026.2.2\bin\idea64.exe` |
@@ -104,12 +104,12 @@ PLUGINS="$APPDATA/JetBrains/IntelliJIdea2026.2/plugins"
 BACKUP="$TEMP/dsh-idea-plugin-plugin-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP" && cp -r "$PLUGINS/dsh-idea-plugin/." "$BACKUP/"     # 回滚用
 rm -rf "$PLUGINS/dsh-idea-plugin"
-unzip -q build/distributions/dsh-idea-plugin-0.8.0.zip -d "$PLUGINS"
+unzip -q build/distributions/dsh-idea-plugin-1.0.0.zip -d "$PLUGINS"
 ```
 
 - **整个目录删掉再解压**，不要只覆盖差异：`lib` 下不同版本名的 jar 会同时被加载，容易类冲突。
 - zip 根目录解出来必须是 `dsh-idea-plugin/`。
-- 替换完核对：`unzip -p "$PLUGINS/dsh-idea-plugin/lib/dsh-idea-plugin-0.8.0.jar" META-INF/plugin.xml | grep -E "<id>|<name>|<version>"`。
+- 替换完核对：`unzip -p "$PLUGINS/dsh-idea-plugin/lib/dsh-idea-plugin-1.0.0.jar" META-INF/plugin.xml | grep -E "<id>|<name>|<version>"`。
 
 ## 4. 重启 IDE
 

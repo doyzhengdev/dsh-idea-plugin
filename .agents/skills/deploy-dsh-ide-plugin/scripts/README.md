@@ -25,7 +25,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .agents/skills/deploy-dsh-id
 
 PLUGINS="$APPDATA/JetBrains/IntelliJIdea2026.2/plugins"
 rm -rf "$PLUGINS/dsh-idea-plugin"
-unzip -q build/distributions/dsh-idea-plugin-0.8.0.zip -d "$PLUGINS"
+unzip -q build/distributions/dsh-idea-plugin-1.0.0.zip -d "$PLUGINS"
 
 powershell -NoProfile -ExecutionPolicy Bypass -File .agents/skills/deploy-dsh-ide-plugin/scripts/start-ide.ps1 -WaitSeconds 50
 

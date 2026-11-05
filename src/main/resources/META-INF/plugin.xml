@@ -2,8 +2,8 @@
 <idea-plugin>
     <id>dev.doyzheng.dsh-ide</id>
     <name>DSH for Desktop</name>
-    <version>0.8.0</version>
-    <vendor>doyzheng</vendor>
+    <version>1.0.0</version>
+    <vendor url="https://github.com/doyzhengdev/dsh-idea-plugin">doyzheng</vendor>
 
     <description><![CDATA[
       <p>DSH for Desktop brings DeepSeek Harness into your JetBrains IDE as a side panel.</p>

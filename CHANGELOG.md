@@ -2,7 +2,7 @@
 
 # DSH for Desktop Changelog
 
-## [0.8.0] - 2026-11-05
+## [1.0.0] - 2026-11-05
 
 ### Added
 
@@ -20,4 +20,4 @@
 
 ### Security
 
-- 插件签名（`signPlugin`），发布包为 `build/distributions/dsh-idea-plugin-0.8.0-signed.zip`。
+- 插件签名（`signPlugin`），发布包为 `build/distributions/dsh-idea-plugin-1.0.0-signed.zip`。

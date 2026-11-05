@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "dev.doyzheng.dsh"
-version = "0.8.0"
+version = "1.0.0"
 
 // IDE 索引排除（与 zcode-ide 同样的理由：生成产物不进索引）
 idea {

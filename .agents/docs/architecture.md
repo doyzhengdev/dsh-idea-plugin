@@ -149,7 +149,7 @@ export JAVA_HOME=/d/apps/jdk/jdk-21.0.2
 ./gradlew buildPlugin --offline -x test --console=plain
 ```
 
-- 产物：`build/distributions/dsh-idea-plugin-0.8.0.zip`；内层 `dsh-idea-plugin/lib/*.jar`。
+- 产物：`build/distributions/dsh-idea-plugin-1.0.0.zip`；内层 `dsh-idea-plugin/lib/*.jar`。
 - 部署：`.agents/skills/deploy-dsh-ide-plugin/`（关 IDE → 备份 → 替换 → 重启 → 查
   `%LOCALAPPDATA%\JetBrains\IntelliJIdea2026.2\log\idea.log` 的 `[dsh]` 行）。
 - 快速验证：

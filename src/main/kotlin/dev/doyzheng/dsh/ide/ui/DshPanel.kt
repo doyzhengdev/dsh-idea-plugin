@@ -303,7 +303,7 @@ class DshPanel(private val project: Project) : Disposable {
             window.__dshIdeOpenExternal = function(url) { ${externalQuery.inject("url")} };
             window.__dshIdeStatusAction = function(action) { ${statusQuery.inject("action")} };
             window.__dshIdeSettingsDocument = ${gson.toJson(settingsDocumentPath)};
-            window.__dshIdeHost = { version: "0.8.0", restartWeb: true };
+            window.__dshIdeHost = { version: "1.0.0", restartWeb: true };
             (function () {
               window.__dshIdePendingPushes = window.__dshIdePendingPushes || [];
               window.__dshIdePush = function (json) {
