@@ -1,0 +1,58 @@
+<!-- DSH for JetBrains -->
+<idea-plugin>
+    <id>dev.doyzheng.dsh-ide</id>
+    <name>DSH for JetBrains</name>
+    <version>0.2.1</version>
+    <vendor>doyzheng</vendor>
+
+    <description><![CDATA[
+      在 JetBrains IDE 侧边栏中使用 DeepSeek Harness。
+      <p>与官方桌面端共享同一个 DSH home：凭据、设置、会话历史互通；
+      全 IDE 只运行一个 dsh 服务，项目通过 <code>ideWorkspace</code> 区分。</p>
+    ]]></description>
+
+    <idea-version since-build="243" until-build="262.*"/>
+
+    <depends>com.intellij.modules.platform</depends>
+    <!-- PyCharm 2026.2 (262) 起 JCEF 拆成独立模块 -->
+    <depends optional="true" config-file="dsh-ide-jcef.xml">com.intellij.modules.jcef</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="dev.doyzheng.dsh.ide.DshSettings"/>
+        <applicationService serviceImplementation="dev.doyzheng.dsh.ide.DshServerService"/>
+
+        <!-- 项目打开后自动展示工具窗口（服务是懒加载的，窗口不显示插件就等于没生效） -->
+        <postStartupActivity implementation="dev.doyzheng.dsh.ide.DshStartupActivity"/>
+
+        <toolWindow id="DSH"
+                    anchor="right"
+                    icon="dev.doyzheng.dsh.ide.icons.DshIcons.ToolWindow"
+                    factoryClass="dev.doyzheng.dsh.ide.ui.DshToolWindowFactory"
+                    secondary="true"
+                    doNotActivateOnStart="true"/>
+
+        <!-- 应用级设置页：Settings → Tools → DSH -->
+        <applicationConfigurable parentId="tools"
+                                 instance="dev.doyzheng.dsh.ide.settings.DshSettingsConfigurable"
+                                 id="dev.doyzheng.dsh.settings"
+                                 displayName="DSH"/>
+
+        <!-- 通知组（T3 消费）：BALLOON 气泡提示 -->
+        <notificationGroup id="DSH" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <!-- 编辑器选区：只发路径与起止行（不发选中原文），页面拼成 `@路径 (Lx-Ly)` 插入输入框 -->
+        <action id="DshIde.SendSelectionToComposer"
+                class="dev.doyzheng.dsh.ide.action.SendSelectionToDshAction">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+        <!-- 项目树 / 编辑器 Tab / 编辑器右键：把选中的文件或目录作为 @引用 添加到对话 -->
+        <action id="DshIde.SendToComposer"
+                class="dev.doyzheng.dsh.ide.action.SendFileToDshAction">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+    </actions>
+</idea-plugin>

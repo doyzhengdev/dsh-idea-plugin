@@ -1,0 +1,32 @@
+{
+  "name": "dsh-plugin-jetbrains",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH for JetBrains 配套 DSH 插件：提供 IDE 桥（打开文件 / 插入引用 / 工作区过滤），并在运行期确保 profile 装有本包。管理功能在 IDEA 插件 Settings 页。",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "src/index.js",
+    "src/client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

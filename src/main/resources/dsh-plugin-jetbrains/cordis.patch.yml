@@ -1,0 +1,5 @@
+# DSH for JetBrains 的 profile 补丁层：把 DSH 侧 IDE 桥插件注入当前 profile。
+# 管理功能（检测 / 安装 / profile）在 IDEA 插件 Settings → Tools → DSH，不在本插件。
+- insert:
+    - id: dsh-plugin-jetbrains
+      name: dsh-plugin-jetbrains

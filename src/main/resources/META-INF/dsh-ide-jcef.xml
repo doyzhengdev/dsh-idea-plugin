@@ -1,0 +1,5 @@
+<!--
+  JCEF 独立模块（PyCharm 2026.2 / build 262 起）存在时才加载本文件。
+  当前没有需要在此注册的扩展；保留文件是为了让 optional depends 的 config-file 始终可解析。
+-->
+<idea-plugin/>

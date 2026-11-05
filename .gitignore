@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+out/
+.kotlin/
+.intellijPlatform/
+
+# IntelliJ
+.idea/
+*.iml
+
+# 构建产物
+*.zip
+*.jar
+# Gradle Wrapper 的 jar 必须入库，否则 clone 后无法运行 wrapper
+!gradle/wrapper/gradle-wrapper.jar
+
+# OS
+Thumbs.db
+.DS_Store

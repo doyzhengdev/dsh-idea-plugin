@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="DSH for JetBrains">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#247bbf"/>
+  <path d="M18 20h11c7.5 0 12.5 4.6 12.5 11.9S36.5 44 29 44H18V20zm6.4 5.4v13.2h4.2c4.1 0 6.6-2.5 6.6-6.7 0-4.1-2.5-6.5-6.6-6.5h-4.2z" fill="#ffffff"/>
+  <circle cx="47" cy="43" r="5" fill="#7bd0ff"/>
+</svg>
