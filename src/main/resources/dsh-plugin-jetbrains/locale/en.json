@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "DSH for JetBrains",
-    "description": "DSH-side IDE bridge for DSH for JetBrains: open files in the IDE, insert @-references from the IDE, and scope the sidebar to the current project. Detection, install/uninstall and profile management live in the IDE plugin (Settings → Tools → DSH)."
+    "description": "DSH-side IDE bridge for DSH for JetBrains: open files in the IDE, insert @-references from the IDE, and scope the sidebar to the current project. Client setup, profile management and service restart live in the IDE plugin's settings dialog (gear in the tool window)."
   }
 }

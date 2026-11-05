@@ -20,6 +20,10 @@ window.__ModuleLoader__.load({
     const HIDE_ATTR = 'data-dsh-ide-hide-workspace'
     const GROUP_SELECTOR = '[class*="groupSection"]'
     const ROW_KEY_PREFIX = 'workspace:'
+    const STORAGE_LOAD = '/dsh-ide/storage/load'
+    const STORAGE_SAVE = '/dsh-ide/storage/save'
+    const STORAGE_PERSIST_DELAY_MS = 600
+    const SETTINGS_OPEN_TEXTS = new Set(['打开配置文件', 'Open configuration file'])
 
     // ---------- 纯工具 ----------
     const readWorkspaceParam = () => {
@@ -76,7 +80,230 @@ window.__ModuleLoader__.load({
     }
 
     // =========================================================================================
-    // 侧栏只显示当前项目（DOM 标记 + MutationObserver）
+    // localStorage 跨端口快照
+    // =========================================================================================
+    class StorageSnapshot {
+      constructor() {
+        this.installed = false
+        this.timer = undefined
+        this.pending = false
+        this.restoredCount = 0
+      }
+
+      /** 同步拉取 Host 快照并回填当前 origin；页面启动越早执行越好。 */
+      loadSync() {
+        try {
+          if (typeof XMLHttpRequest !== 'function' || typeof window.localStorage === 'undefined') return
+          const xhr = new XMLHttpRequest()
+          xhr.open('GET', STORAGE_LOAD, false)
+          xhr.send(null)
+          if (xhr.status !== 200) return
+          const payload = JSON.parse(xhr.responseText)
+          const storage = payload && payload.storage
+          if (storage === null || typeof storage !== 'object' || Array.isArray(storage)) return
+          Object.keys(storage).forEach((key) => {
+            const value = storage[key]
+            if (typeof key !== 'string' || typeof value !== 'string') return
+            try {
+              // 当前 origin 已有的新值优先，不被旧快照覆盖。
+              if (window.localStorage.getItem(key) === null) {
+                window.localStorage.setItem(key, value)
+                this.restoredCount++
+              }
+            } catch { /* 单条失败不影响其他键 */ }
+          })
+          if (this.restoredCount > 0) console.info(LOG, '已恢复 localStorage 快照 ' + this.restoredCount + ' 项')
+        } catch (error) {
+          console.warn(LOG, '恢复 localStorage 快照失败（继续正常启动）', error)
+        }
+      }
+
+      snapshot() {
+        const out = {}
+        try {
+          const storage = window.localStorage
+          for (let i = 0; i < storage.length; i++) {
+            const key = storage.key(i)
+            if (key === null) continue
+            const value = storage.getItem(key)
+            if (value !== null) out[key] = value
+          }
+        } catch { /* 存储不可用时返回空快照 */ }
+        return out
+      }
+
+      schedule() {
+        this.pending = true
+        if (this.timer !== undefined) return
+        this.timer = setTimeout(() => {
+          this.timer = undefined
+          this.flush(false)
+        }, STORAGE_PERSIST_DELAY_MS)
+      }
+
+      flush(useBeacon) {
+        if (!this.pending) return
+        const body = JSON.stringify({ storage: this.snapshot() })
+        try {
+          if (useBeacon && typeof navigator.sendBeacon === 'function') {
+            const sent = navigator.sendBeacon(STORAGE_SAVE, new Blob([body], { type: 'application/json' }))
+            if (sent) { this.pending = false; return }
+          }
+          void fetch(STORAGE_SAVE, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+            credentials: 'same-origin',
+            keepalive: true,
+          }).then((res) => { if (res.ok || res.status === 204) this.pending = false }).catch(() => {})
+        } catch { /* 忽略；下次操作还会再试 */ }
+      }
+
+      install() {
+        if (this.installed) return
+        this.installed = true
+        this.loadSync()
+
+        const self = this
+        const originalSet = Storage.prototype.setItem
+        const originalRemove = Storage.prototype.removeItem
+        const originalClear = Storage.prototype.clear
+        try {
+          Storage.prototype.setItem = function (key, value) {
+            const result = originalSet.apply(this, arguments)
+            if (this === window.localStorage) self.schedule()
+            return result
+          }
+          Storage.prototype.removeItem = function (key) {
+            const result = originalRemove.apply(this, arguments)
+            if (this === window.localStorage) self.schedule()
+            return result
+          }
+          Storage.prototype.clear = function () {
+            const result = originalClear.apply(this, arguments)
+            if (this === window.localStorage) self.schedule()
+            return result
+          }
+        } catch (error) {
+          console.warn(LOG, '无法监听 localStorage 变化，快照只做启动恢复', error)
+        }
+
+        try {
+          window.addEventListener('beforeunload', () => self.flush(true))
+          document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') self.flush(true) })
+        } catch { /* 事件注册失败就不做退出前兜底 */ }
+        // 诊断入口：CDP / 控制台可手动触发保存或查看快照。
+        window.__dshIdeStorageSnapshot = () => self.snapshot()
+        window.__dshIdeStorageFlush = () => self.flush(false)
+        console.info(LOG, 'localStorage 跨端口快照已启用')
+      }
+    }
+
+    // =========================================================================================
+    // 外部链接 → 系统浏览器
+    // =========================================================================================
+    const isExternalHttpUrl = (url) => {
+      if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return false
+      try { return new URL(url).origin !== window.location.origin } catch { return false }
+    }
+
+    class ExternalLinkBridge {
+      open(url) {
+        const bridge = window.__dshIdeOpenExternal
+        if (typeof bridge !== 'function' || !isExternalHttpUrl(url)) return false
+        try { bridge(url); return true } catch (error) { console.warn(LOG, '打开外部链接失败', error); return false }
+      }
+
+      installGlobal() {
+        // DSH 的 openExternalLink 默认走 window.open(url, '_blank')；JCEF 会开成内置窗口。
+        // 这里改成交给 IDE，由 Kotlin 用系统默认浏览器打开（失败再回退内置 JCEF）。
+        const originalOpen = window.open
+        const self = this
+        window.open = function (url, target, features) {
+          // 登录流程先 window.open('about:blank')，拿到 attempt 后再 popup.location.replace(授权地址)。
+          // 用代理 window 把后续 replace 的授权地址交给系统浏览器，避免落到内置 JCEF。
+          if (url === 'about:blank') {
+            return {
+              closed: false,
+              opener: null,
+              location: {
+                replace: function (nextUrl) {
+                  if (!self.open(nextUrl) && typeof originalOpen === 'function') {
+                    try { originalOpen.call(window, nextUrl, '_blank', 'noopener,noreferrer') } catch { /* ignore */ }
+                  }
+                },
+              },
+              close: function () { this.closed = true },
+              focus: function () {},
+              blur: function () {},
+            }
+          }
+          if (self.open(url)) return null
+          return typeof originalOpen === 'function' ? originalOpen.apply(window, arguments) : null
+        }
+        // Markdown / 普通 anchor 的外链同样拦下。
+        document.addEventListener('click', (event) => {
+          const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null
+          if (anchor === null) return
+          const href = anchor.href
+          if (!self.open(href)) return
+          event.preventDefault()
+          event.stopPropagation()
+        }, true)
+      }
+
+      installSidebar(ctx) {
+        let sidebarRight
+        try { sidebarRight = ctx.get('sidebarRight') } catch { sidebarRight = undefined }
+        if (sidebarRight === undefined || typeof sidebarRight.openTab !== 'function') return
+        if (sidebarRight.__dshIdeExternalTabOverride) return
+        const original = sidebarRight.openTab
+        const self = this
+        try {
+          sidebarRight.openTab = function (type, options) {
+            const url = options && options.params && options.params.url
+            if (type === 'browser' && self.open(url)) return
+            return original.apply(sidebarRight, arguments)
+          }
+          sidebarRight.__dshIdeExternalTabOverride = true
+        } catch (error) { console.warn(LOG, '无法覆盖 sidebarRight.openTab', error) }
+      }
+    }
+
+    // =========================================================================================
+    // DSH 设置页「打开配置文件」→ IDE 打开
+    // =========================================================================================
+    class SettingsDocumentBridge {
+      constructor() { this.installed = false }
+
+      install() {
+        if (this.installed) return
+        this.installed = true
+        document.addEventListener('click', (event) => {
+          const target = event.target instanceof Element
+            ? event.target.closest('button, [role="button"], a')
+            : null
+          if (target === null) return
+          const text = (target.textContent || '').replace(/\s+/g, ' ').trim()
+          if (!SETTINGS_OPEN_TEXTS.has(text)) return
+          const path = window.__dshIdeSettingsDocument
+          const open = window.__dshIdeOpenFile
+          if (typeof path !== 'string' || path === '' || typeof open !== 'function') return
+          // 拦下 DSH 的原生打开（在 JCEF 里会走系统文件关联并失败），改由 IDE 打开。
+          event.preventDefault()
+          event.stopPropagation()
+          try {
+            open(JSON.stringify({ path, line: 0, column: 0 }))
+            console.info(LOG, '设置配置文件已在 IDE 中打开：' + path)
+          } catch (error) {
+            console.warn(LOG, '在 IDE 中打开设置配置文件失败', error)
+          }
+        }, true)
+      }
+    }
+
+    // =========================================================================================
+    // 侧栏：隐藏工作区区块，只保留当前项目的会话（DOM 标记 + MutationObserver）
     // =========================================================================================
     class WorkspaceFilter {
       constructor() { this.currentWorkspaceId = undefined; this.started = false }
@@ -96,6 +323,35 @@ window.__ModuleLoader__.load({
           if (key.slice(ROW_KEY_PREFIX.length) === this.currentWorkspaceId) section.removeAttribute(HIDE_ATTR)
           else section.setAttribute(HIDE_ATTR, '')
         })
+        this.hideWorkspaceChrome()
+      }
+      /**
+       * IDE 里工作区由 `ideWorkspace` 固定，侧栏的「工作区」标题、搜索/视图/新建工作区按钮，
+       * 以及唯一的项目行都是冗余信息，整块隐藏；会话分组本身保留。
+       * header 与项目行不在同一父节点，先向上找到同时包含两者的容器再定位。
+       * 侧栏收起成图标条时工作区行不渲染，但 rail 仍会渲染「添加工作区」和「搜索会话」
+       * 两个 36px 控件，它们同样要隐藏（否则收起状态会多出这两个图标）。
+       */
+      hideWorkspaceChrome() {
+        const rows = document.querySelectorAll('[data-row-key^="' + ROW_KEY_PREFIX + '"]')
+        if (rows.length > 0) {
+          rows.forEach((row) => row.setAttribute(HIDE_ATTR, ''))
+          let container = rows[0].parentElement
+          while (container !== null) {
+            const header = container.querySelector('[class*="sectionHeader"]')
+            if (header !== null) {
+              header.setAttribute(HIDE_ATTR, '')
+              break
+            }
+            container = container.parentElement
+          }
+        }
+        document.querySelectorAll('[class*="_root"][class*="_rail"]').forEach((root) => {
+          const add = root.querySelector('[class*="headerActions"] [class*="iconButton"]')
+          if (add !== null) add.setAttribute(HIDE_ATTR, '')
+          const search = root.querySelector('[class*="searchButton"]')
+          if (search !== null) search.setAttribute(HIDE_ATTR, '')
+        })
       }
       start(wsId) {
         this.currentWorkspaceId = wsId
@@ -112,7 +368,7 @@ window.__ModuleLoader__.load({
         }
         schedule()
         new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true })
-        console.info(LOG, '工作区列表仅显示当前项目：' + wsId)
+        console.info(LOG, '侧栏已隐藏工作区区块（含收起状态的新建工作区/搜索图标），仅显示当前项目的会话：' + wsId)
       }
     }
 
@@ -405,6 +661,7 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         try { this.composer.install(ctx) } catch (error) { console.warn(LOG, '发送到对话框桥安装失败', error) }
         try { this.fileBridge.install(ctx) } catch (error) { console.warn(LOG, '文件打开覆盖安装失败', error) }
+        try { externalLinkBridge.installSidebar(ctx) } catch (error) { console.warn(LOG, '外部链接侧栏覆盖安装失败', error) }
         const idePath = readWorkspaceParam()
         if (idePath === undefined) return
         // IDE 内当前项目由 ideWorkspace 固定，隐藏「新建会话 Hero」里的项目/工作区选择器。
@@ -431,6 +688,14 @@ window.__ModuleLoader__.load({
         ;(document.head || document.documentElement).appendChild(style)
       }
     }
+
+    // 模块加载即执行：尽量早地把 Host 快照写回当前 origin 的 localStorage。
+    const storageSnapshot = new StorageSnapshot()
+    try { storageSnapshot.install() } catch (error) { console.warn(LOG, 'localStorage 快照初始化失败', error) }
+    const settingsDocumentBridge = new SettingsDocumentBridge()
+    try { settingsDocumentBridge.install() } catch (error) { console.warn(LOG, '设置配置文件桥初始化失败', error) }
+    const externalLinkBridge = new ExternalLinkBridge()
+    try { externalLinkBridge.installGlobal() } catch (error) { console.warn(LOG, '外部链接桥初始化失败', error) }
 
     const bridge = new IdeBridge()
     return {

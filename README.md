@@ -1,64 +1,44 @@
 # dsh-idea-plugin
 
-IntelliJ Platform 插件：在 JetBrains IDE 的侧边栏中托管 DSH（DeepSeek Harness）Web UI。
+IntelliJ Platform 插件：在 JetBrains IDE 的工具窗口中托管 DeepSeek Harness Web UI。
 
-- 插件 id：`dev.doyzheng.dsh-ide`（保持不变，避免升级被当成新插件）
-- 插件名/产物名：`dsh-idea-plugin`
+- 插件 id：`dev.doyzheng.dsh-ide`；插件名 / 产物名：`dsh-idea-plugin`
 - 宿主：应用级单例，一个 dsh 进程服务所有项目；项目通过 URL fragment `ideWorkspace` 区分
-- profile：默认 `idea`，与官方桌面端共享 `~/.dsh`（sessions / storages / 凭据）
-- IDE 桥（ideWorkspace / 点文件在 IDE 打开 / 右键插入 `@引用` / 侧栏只显示当前项目）由 DSH 插件
-  `dsh-plugin-jetbrains` 的 Client 半边提供；本插件把该插件打包进 jar 资源（`/dsh-plugin-jetbrains`），
-  每次启动由 `DshBundleBootstrap` 注入当前 profile（拷贝到 node_modules；profile 未登记 bundle
-  时用 `--patch` 挂载），因此引用/复制/新建的 profile 都能用。
-- **管理功能都在本插件**：`Settings → Tools → DSH` 提供 JetBrains 工具检测、安装/更新/卸载本插件到其它 IDE、
-  profile 管理（引用/复制/空 + 备份切回）、重启 DSH 服务。
+- profile：默认 `idea`，链接到官方桌面端的 `desktop`，共享 `~/.dsh`（sessions / storages / 凭据）
+- 运行时：复用官方 DeepSeek Harness 桌面客户端（未安装时自动下载安装）
+- IDE 桥由 DSH 插件 `dsh-plugin-jetbrains` 提供；本插件把它打进 jar 并注入当前 profile
 
-## 目录结构
+## 功能
 
-```
-.
-├── .run/                   Predefined Run/Debug Configurations（runIde / check / verifyPlugin）
-├── gradle
-│   ├── wrapper/            Gradle Wrapper
-│   └── libs.versions.toml  Version catalog（junit）
-├── src
-│   ├── main
-│   │   ├── kotlin/         Kotlin 生产代码（dev.doyzheng.dsh.ide.*）
-│   │   └── resources
-│   │       ├── META-INF/   plugin.xml / pluginIcon.svg / dsh-ide-jcef.xml
-│   │       └── dsh-plugin-jetbrains/  DSH 侧 IDE 桥插件（package.json + src/，打进 jar 的 /dsh-plugin-jetbrains）
-│   └── test/kotlin/        单元测试
-├── build.gradle.kts
-├── gradle.properties
-├── gradlew / gradlew.bat
-├── CHANGELOG.md
-├── README.md
-└── settings.gradle.kts
-```
+- DSH 工具窗口（JCEF）；右上角齿轮打开设置弹窗：运行信息、客户端/Node 版本、一键修复、重启 DSH 服务。
+- IDE 桥：点文件在 IDE 打开、右键把文件/选区以 `@引用` 插入输入框、侧栏只显示当前项目。
+- 首次启动语言/主题跟随 IDE；写入由 DSH 官方 `configEditor` 完成，不破坏 profile 里的注释与其它配置。
 
 ## 构建
 
 ```bash
-export JAVA_HOME="D:\\apps\\jdk\\jdk-21.0.2"
+export JAVA_HOME="D:\\apps\\jdk\\jdk-21.0.2"   # 默认 JAVA_HOME 是 JDK 8
 
-./gradlew test --no-daemon              # 31 条单测
-./gradlew buildPlugin --no-daemon       # → build/distributions/dsh-idea-plugin-<version>.zip
+./gradlew buildPlugin --offline -x test --console=plain   # → build/distributions/dsh-idea-plugin-<version>.zip
+./gradlew compileTestKotlin --offline                     # 只编译测试，不跑
+./gradlew test --offline                                  # 需要时再跑
 ```
 
-> 本机若无外网，IntelliJ Platform Gradle Plugin 会尝试访问 `jb.gg` 而失败，构建请加 `--offline`
-> （已缓存 `IC 2025.1` 到 `.intellijPlatform/localPlatformArtifacts`）。
+无外网时必须加 `--offline`，否则 IntelliJ Platform Gradle Plugin 会访问 `jb.gg` 而失败。
 
-## 安装到本机 IDE
+## 部署
 
-见仓库根 `.agents/skills/deploy-dsh-ide-plugin/`：打包 → 关 IDE → 替换 `plugins\dsh-idea-plugin` → 重启 → 验证。
-或在本 IDE 的 `Settings → Tools → DSH` 里把本插件安装/更新到其它 JetBrains IDE（关闭→备份→复制→可选启动）。
+见 `.agents/skills/deploy-dsh-ide-plugin/`：打包 → 关闭 IDE → 备份 `plugins/dsh-idea-plugin` →
+解压 zip → 重启 IDE → 查看 `idea.log` 的 `[dsh]` 行。
 
-## 与官方 awesome-plugin 模板的差异
+## 目录结构
 
-结构基本一致（`build.gradle.kts` + `settings.gradle.kts` + `gradle/wrapper` + `src/main/{kotlin,resources/META-INF}` +
-`gradle.properties` + `.run/` + `gradle/libs.versions.toml`）。有意保留的差异：
-
-- 版本内联固定（Kotlin 2.1.0 / IPGP 2.2.1 / IC 2025.1）以支持离线构建；示例模板用较新的
-  `org.jetbrains.intellij.platform.settings` + `intellijIdea("2025.3.x")`。
-- 未引入 `org.jetbrains.changelog` 插件（`CHANGELOG.md` 仍保留，便于人工维护）。
-- 平台测试用普通 JUnit（未启用 `TestFrameworkType.Platform`），避免离线解析测试框架依赖。
+```
+src/main/kotlin/                          Kotlin 生产代码
+src/main/resources/META-INF/              plugin.xml / 图标 / JCEF 模块声明
+src/main/resources/dsh-plugin-jetbrains/  DSH 侧 IDE 桥插件（打进 jar 的 /dsh-plugin-jetbrains）
+src/test/kotlin/                          单元测试
+.agents/skills/deploy-dsh-ide-plugin/     部署脚本
+.agents/docs/architecture.md              架构说明
+HANDOFF.md                                交接文档
+```

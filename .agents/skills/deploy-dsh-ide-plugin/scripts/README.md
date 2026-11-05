@@ -24,8 +24,8 @@ JAVA_HOME=/d/apps/jdk/jdk-21.0.2 ./gradlew buildPlugin --console=plain
 powershell -NoProfile -ExecutionPolicy Bypass -File .agents/skills/deploy-dsh-ide-plugin/scripts/stop-ide.ps1
 
 PLUGINS="$APPDATA/JetBrains/IntelliJIdea2026.2/plugins"
-rm -rf "$PLUGINS/dsh-ide"
-unzip -q build/distributions/dsh-ide-0.1.1.zip -d "$PLUGINS"
+rm -rf "$PLUGINS/dsh-idea-plugin"
+unzip -q build/distributions/dsh-idea-plugin-0.8.0.zip -d "$PLUGINS"
 
 powershell -NoProfile -ExecutionPolicy Bypass -File .agents/skills/deploy-dsh-ide-plugin/scripts/start-ide.ps1 -WaitSeconds 50
 

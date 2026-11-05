@@ -2,7 +2,7 @@
 <idea-plugin>
     <id>dev.doyzheng.dsh-ide</id>
     <name>DSH for JetBrains</name>
-    <version>0.2.1</version>
+    <version>0.8.0</version>
     <vendor>doyzheng</vendor>
 
     <description><![CDATA[
@@ -21,9 +21,11 @@
         <applicationService serviceImplementation="dev.doyzheng.dsh.ide.DshSettings"/>
         <applicationService serviceImplementation="dev.doyzheng.dsh.ide.DshServerService"/>
 
-        <!-- 项目打开后自动展示工具窗口（服务是懒加载的，窗口不显示插件就等于没生效） -->
+        <!-- 项目启动完成后在后台启动宿主（不展示工具窗口） -->
         <postStartupActivity implementation="dev.doyzheng.dsh.ide.DshStartupActivity"/>
 
+        <!-- 宿主随 IDE 启动预热；工具窗口仍只在用户点击 DSH 图标时创建并显示。
+             doNotActivateOnStart 让平台不恢复上次会话遗留的可见状态。 -->
         <toolWindow id="DSH"
                     anchor="right"
                     icon="dev.doyzheng.dsh.ide.icons.DshIcons.ToolWindow"
@@ -31,14 +33,7 @@
                     secondary="true"
                     doNotActivateOnStart="true"/>
 
-        <!-- 应用级设置页：Settings → Tools → DSH -->
-        <applicationConfigurable parentId="tools"
-                                 instance="dev.doyzheng.dsh.ide.settings.DshSettingsConfigurable"
-                                 id="dev.doyzheng.dsh.settings"
-                                 displayName="DSH"/>
-
-        <!-- 通知组（T3 消费）：BALLOON 气泡提示 -->
-        <notificationGroup id="DSH" displayType="BALLOON"/>
+        <!-- 设置入口：DSH 工具窗口右上角齿轮打开独立弹窗 -->
     </extensions>
 
     <actions>

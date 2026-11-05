@@ -1,0 +1,96 @@
+<!doctype html>
+<html data-theme="{{THEME}}">
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #6e7781;
+  --line: rgba(31, 35, 40, .14);
+  --accent: #3b82f6;
+}
+:root[data-theme="dark"] {
+  --bg: #1e1f22;
+  --fg: #dfe1e5;
+  --muted: #9da0a8;
+  --line: rgba(223, 225, 229, .16);
+  --accent: #4c8dff;
+}
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 560px;
+  padding: 24px;
+  text-align: center;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.bar {
+  position: relative;
+  width: 180px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: slide 1.2s ease-in-out infinite;
+}
+@keyframes slide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+.title { font-size: 15px; font-weight: 600; }
+.detail { font-size: 12px; line-height: 1.7; color: var(--muted); white-space: pre-wrap; }
+button {
+  margin-top: 6px;
+  padding: 6px 18px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+button:hover { background: var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+{{SPINNER}}
+<div class="title">{{TITLE}}</div>
+<div class="detail">{{DETAIL}}</div>
+{{BAR}}
+{{BUTTON}}
+</div>
+<script>
+function act(id) {
+  if (window.__dshIdeStatusAction) window.__dshIdeStatusAction(id);
+}
+</script>
+</body>
+</html>

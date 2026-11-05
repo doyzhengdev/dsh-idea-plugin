@@ -21,10 +21,10 @@ sealed interface DshCommandResolution {
 }
 
 /**
- * 把「配置 / PATH / 桌面端 runtime」解析成可执行的 dsh 命令。
+ * 把「显式配置 / PATH」解析成可执行的 dsh 命令。
  *
- * 解析顺序与 [DshSettings.Settings.dshCommand] 的注释一致：
- * 显式配置 → PATH → 桌面端内置 runtime。最终 `DshServerService` 会在此基础上追加应用参数。
+ * 自动模式（空 / `dsh`）由 `DshServerService` 直接使用官方桌面客户端，不走这里；
+ * 本对象处理用户显式配置的外部 dsh：显式路径 → PATH。
  *
  * 纯函数：只读文件系统，不读注册表、不写文件、不启动进程。`SystemInfo` 仅作为默认参数，
  * 测试必须显式传 `isWindows` 与 `extraCandidates`，不依赖本机是否装了桌面端。
@@ -38,24 +38,32 @@ object DshCommandResolver {
 
     private const val SOURCE_CONFIGURED = "配置"
     private const val SOURCE_PATH = "PATH"
-    private const val SOURCE_DESKTOP_RUNTIME = "桌面端 runtime"
-
-    /** 桌面端内置 CLI：本机验证过的路径，只有文件真实存在才算命中。 */
-    private const val WINDOWS_RUNTIME_CANDIDATE = "D:\\apps\\dsh\\resources\\runtime\\cli\\bin\\dsh.cmd"
+    private const val SOURCE_CANDIDATE = "候选路径"
 
     /** 自动模式：这些写法都等价于「插件自己找 dsh」。 */
     private val AUTO_NAMES = setOf("dsh", "dsh.exe", "dsh.cmd")
 
-    private const val HINT = "请在 Settings > Tools > DSH 设置 dsh 命令，或安装/启动桌面端"
+    private const val HINT = "请在 Settings > Tools > DSH 设置 dsh 命令；留空或填 dsh 会使用官方 DeepSeek Harness 客户端自带的运行时（未安装时自动下载安装）"
 
     private const val RELATIVE_HINT = "相对路径按用户主目录解析"
+
+    /**
+     * 是否为「自动模式」配置（空 / `dsh` / `dsh.exe` / `dsh.cmd`）。
+     *
+     * 自动模式由 [DshServerService] 走官方客户端，不调用本对象；
+     * 显式路径仍然原样解析（外部 dsh 覆盖）。
+     */
+    fun isAutoConfigured(configured: String): Boolean {
+        val raw = configured.trim()
+        return raw.isEmpty() || AUTO_NAMES.any { raw.equals(it, ignoreCase = true) }
+    }
 
     /**
      * 解析 dsh 启动命令。
      *
      * @param configured 用户在设置里填写的命令；空白或 `dsh` / `dsh.exe` / `dsh.cmd` 进入自动模式。
      * @param pathEnv    待解析的 PATH 字符串（Windows 用 `;`，其他平台用 `:`）。
-     * @param extraCandidates 自动模式在 PATH 之后的兜底候选，默认是桌面端 runtime。
+     * @param extraCandidates 自动模式在 PATH 之后的兜底候选路径。
      * @param isWindows  仅用于决定候选扩展名与可执行判断，测试显式传入。
      * @param baseDir    相对路径的解析基准，**必须与子进程 cwd 一致**：`DshServerService` 把
      *                   `ProcessBuilder.directory` 设为 `user.home`，所以这里默认也用 `user.home`。
@@ -64,12 +72,12 @@ object DshCommandResolver {
     fun resolve(
         configured: String,
         pathEnv: String?,
-        extraCandidates: List<String> = defaultExtraCandidates(),
+        extraCandidates: List<String> = emptyList(),
         isWindows: Boolean = SystemInfo.isWindows,
         baseDir: Path = defaultBaseDir(),
     ): DshCommandResolution {
         val raw = configured.trim()
-        if (raw.isEmpty() || AUTO_NAMES.any { raw.equals(it, ignoreCase = true) }) {
+        if (isAutoConfigured(raw)) {
             return resolveAuto(pathEnv, extraCandidates, isWindows)
         }
 
@@ -77,7 +85,7 @@ object DshCommandResolver {
         if (tokens.isEmpty()) return missing(emptyList())
 
         val head = tokens.first()
-        // 路径形态：不再猜，存在即用，不存在直接报错，避免悄悄换成别的 dsh。
+        // 路径形态：不猜，存在即用，不存在直接报错，避免悄悄换成别的 dsh。
         if (isPathLike(head)) {
             // 绝对路径与进程 cwd 无关，保持原样判定。
             if (toPathOrNull(head)?.isAbsolute == true) {
@@ -111,10 +119,6 @@ object DshCommandResolver {
         }
     }
 
-    /** 自动模式的兜底候选：只有 Windows 桌面端有内置 runtime，其他平台返回空列表。 */
-    fun defaultExtraCandidates(): List<String> =
-        if (SystemInfo.isWindows) listOf(WINDOWS_RUNTIME_CANDIDATE) else emptyList()
-
     // ---------------------------------------------------------------------------------------------
     // 自动模式
     // ---------------------------------------------------------------------------------------------
@@ -135,7 +139,7 @@ object DshCommandResolver {
             if (path.isEmpty()) continue
             searched += path
             if (File(path).isFile) {
-                return DshCommandResolution.Resolved(listOf(path), SOURCE_DESKTOP_RUNTIME)
+                return DshCommandResolution.Resolved(listOf(path), SOURCE_CANDIDATE)
             }
         }
 

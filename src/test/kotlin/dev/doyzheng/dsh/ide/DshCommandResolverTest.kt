@@ -20,10 +20,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * `DshCommandResolver` 的解析契约：显式配置优先、PATH 次之、桌面端 runtime 兜底，
+ * `DshCommandResolver` 的解析契约：显式配置优先、PATH 次之、兜底候选最后，
  * 失败时给出可操作的信息。
  *
- * 所有用例都显式传 `isWindows` 与 `extraCandidates`，不依赖本机是否装了桌面端。
+ * 所有用例都显式传 `isWindows` 与 `extraCandidates`，不依赖本机环境。
  */
 class DshCommandResolverTest {
 
@@ -116,7 +116,7 @@ class DshCommandResolverTest {
     }
 
     @Test
-    fun `自动模式下 PATH 为空时回落到桌面端 runtime`() {
+    fun `自动模式下 PATH 为空时回落到兜底候选`() {
         val runtime = newDir("runtime").resolve("dsh.cmd")
         Files.createFile(runtime)
 
@@ -128,7 +128,7 @@ class DshCommandResolverTest {
         )
 
         assertEquals(listOf(runtime.toString()), resolved(result).command)
-        assertEquals("桌面端 runtime", resolved(result).source)
+        assertEquals("候选路径", resolved(result).source)
     }
 
     @Test

@@ -13,7 +13,7 @@ import java.nio.file.Paths
  *
  * 建出来的内容与 `initProfile()` 一致：
  * - `package.json`：bundles = base + web-app（等同于 `dsh web` 的组合，只是 profile 名不同）
- * - `cordis.patch.yml`：空数组，留作插件注入层
+ * - `cordis.patch.yml`：用户补丁层，初始为空数组
  * - `pnpm-workspace.yaml`：pnpm 的 hoisted 链接配置
  *
  * 这里只创建、绝不改写：用户手动改过 bundles 的 profile 必须原样保留。
@@ -24,7 +24,7 @@ object DshProfileBootstrap {
     private const val WEB_APP = "@deepseek-ai/dsh-web-app"
 
     private val PATCH_TEMPLATE = """
-        # DSH for JetBrains 的 profile 补丁层（插件生成的默认内容，可自行编辑）
+        # 本 profile 的用户补丁层（可自行编辑）
         []
     """.trimIndent() + "\n"
 

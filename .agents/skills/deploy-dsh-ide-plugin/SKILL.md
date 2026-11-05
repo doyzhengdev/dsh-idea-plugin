@@ -18,7 +18,7 @@ IntelliJ 的自定义插件没有额外注册表，`plugins/` 下就是一个目
 |---|---|
 | 项目根 | `E:\gitee\doyzheng\dsh-ide` |
 | Kotlin 工程根（Gradle 工作目录） | `E:\gitee\doyzheng\dsh-ide`（仓库根） |
-| 构建产物 | `build\distributions\dsh-idea-plugin-<version>.zip`（version 见 `build.gradle.kts`，当前 `0.2.1`） |
+| 构建产物 | `build\distributions\dsh-idea-plugin-<version>.zip`（version 见 `build.gradle.kts`，当前 `0.8.0`） |
 | 已安装插件目录 | `C:\Users\ZDY\AppData\Roaming\JetBrains\IntelliJIdea2026.2\plugins\dsh-idea-plugin` |
 | 插件设置文件 | `C:\Users\ZDY\AppData\Roaming\JetBrains\IntelliJIdea2026.2\options\dsh-ide.xml`（component `DshIdeSettings`） |
 | IDE 可执行文件 | `C:\Program Files\JetBrains\IntelliJ IDEA 2026.2.2\bin\idea64.exe` |
@@ -95,7 +95,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .agents/skills/deploy-dsh-id
   `Get-Process idea64` 是否**全部**为空。
 - 超时才兜底 `-Force`，强杀可能丢未保存内容。
 - IDE 退出后确认插件子进程也退了：`Get-Process | Where-Object {$_.ProcessName -eq 'DeepSeek Harness'}`
-  与 `Get-NetTCPConnection -State Listen -LocalPort 45231` 都应为空；有残留就结束它再替换。
+  与 `Get-NetTCPConnection -State Listen -LocalPort 46231` 都应为空；有残留就结束它再替换。
 
 ## 3. 替换插件目录
 
@@ -104,12 +104,12 @@ PLUGINS="$APPDATA/JetBrains/IntelliJIdea2026.2/plugins"
 BACKUP="$TEMP/dsh-idea-plugin-plugin-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP" && cp -r "$PLUGINS/dsh-idea-plugin/." "$BACKUP/"     # 回滚用
 rm -rf "$PLUGINS/dsh-idea-plugin"
-unzip -q build/distributions/dsh-idea-plugin-0.2.1.zip -d "$PLUGINS"
+unzip -q build/distributions/dsh-idea-plugin-0.8.0.zip -d "$PLUGINS"
 ```
 
 - **整个目录删掉再解压**，不要只覆盖差异：`lib` 下不同版本名的 jar 会同时被加载，容易类冲突。
 - zip 根目录解出来必须是 `dsh-idea-plugin/`。
-- 替换完核对：`unzip -p "$PLUGINS/dsh-idea-plugin/lib/dsh-idea-plugin-0.2.1.jar" META-INF/plugin.xml | grep -E "<id>|<name>|<version>"`。
+- 替换完核对：`unzip -p "$PLUGINS/dsh-idea-plugin/lib/dsh-idea-plugin-0.8.0.jar" META-INF/plugin.xml | grep -E "<id>|<name>|<version>"`。
 
 ## 4. 重启 IDE
 
@@ -129,12 +129,10 @@ grep -a "启动 DSH" "$LOCALAPPDATA/JetBrains/IntelliJIdea2026.2/log/idea.log" |
 
 期望同时出现：
 
-- `--profile <profile>`：默认 `idea`；本机可能设为 `web`（`profiles/web` 指向 `desktop` 的 junction）
-- `--host 127.0.0.1 --port 45231 --no-open`
-- **`--patch ...dsh-plugin-jetbrains.patch.yml` 可能出现**：0.2.1 起 Kotlin 每次启动把
-  `dsh-plugin-jetbrains` 注入 profile；若 profile 的 `dsh.profile.bundles` 已含该插件，走 bundle 加载
-  （无 `--patch`），否则用 `--patch` 覆盖层挂载。两种都正常。
-- 不应再出现 `dsh-ide-client.patch.yml`（旧浏览器补丁已并入 DSH 插件）。
+- `--profile idea`：`profiles/idea` 是指向桌面端 `desktop` 的 junction
+- `--host 127.0.0.1 --port 46231 --no-open`
+- `--patch ...dsh-plugin-jetbrains.patch.yml`：Kotlin 每次启动把 `dsh-plugin-jetbrains`
+  注入 profile，并始终用 `--patch` 覆盖层挂载（插件在 devDependencies 里，官方两个插件列表都不显示）。
 
 **第二步看界面：** 工具窗口内 JCEF 正常渲染 DSH；首次启动（无 cookie）应直接落到当前项目。
 
@@ -146,14 +144,14 @@ node .agents/skills/deploy-dsh-ide-plugin/scripts/cdp-eval.mjs "window.__dshIdeC
 node .agents/skills/deploy-dsh-ide-plugin/scripts/cdp-eval.mjs "window.__dshIdeComposerReady === true"
 ```
 
-`__dshIdeComposerState()` 返回输入框的 draft/rev/span（0.1.6 起有，验证「添加到 DSH 对话」链路时用）。
+`__dshIdeComposerState()` 返回输入框的 draft/rev/span，验证「添加到 DSH 对话」链路时用。
 
-**第四步验证设置持久化（0.1.1 修复点）：**
+**第四步验证设置持久化：**
 
 1. 在 DSH 设置里改主题色/语言；
 2. 完全退出 IDE 再启动；
 3. 设置应保持。检查 profile 的 `cordis.patch.yml` 里 `ui-theme` / `locale` 行仍在，
-   且文件里**没有** `# >>> dsh-ide-client` 标记段（0.1.0 会把段内新写入的设置删掉）。
+   注释、entry 顺序与同级键（如 `fontSize`）没有被重写。
 
 ## 常见故障
 
@@ -163,11 +161,11 @@ node .agents/skills/deploy-dsh-ide-plugin/scripts/cdp-eval.mjs "window.__dshIdeC
 | 改了代码没变化 | jar 没替换成功，或 IDE 没真正重启（类不会热重载） |
 | 工具窗口空白 / 报 JCEF 不支持 | JCEF 未启用或端口被占；看日志里 `[dsh]` 段 |
 | 启动命令里 profile 不是预期 | `options/dsh-ide.xml` 的 `DshIdeSettings/profile` 值 |
-| 主题改完重启回默认 | 0.1.0 及更早版本的旧标记段问题；0.1.1+ 已修。0.2.0/0.1.8 起 `dsh-ide-client` 不再注入，`dsh-ide-client.patch.yml` 不应存在 |
+| 主题改完重启回默认 | 检查 `cordis.patch.yml` 里 `locale` / `ui-theme` 的 `preference`，以及 `.dsh-ide-appearance.json` 初始化标记 |
 | 右键「添加到 DSH 对话」无反应 | CDP 查 `__dshIdeComposerReady`（页面侧没就绪会先排队）；composer 正在提交（frozen）时该次插入会被跳过 |
 | 插入的引用丢失 / 位置不对 | 确认 jar 与 profile 的 `client.js` 一致（启动时按内容覆盖同步）；不要手动只改 profile 里的副本 |
-| 端口 45231 被占 | 桌面端或旧 IDE 残留；本插件会向上探测到 45232，origin 变化会丢 localStorage |
-| profile=web 时桌面端和 IDE 配置互相影响 | 两者共写同一个 profile；**不要同时运行**桌面端与 IDE |
+| 端口 46231 被占 | 桌面端或旧 IDE 残留；本插件会向上探测到 46232，origin 变化会丢 localStorage |
+| 桌面端和 IDE 配置互相影响 | 两者共用 `profiles/desktop`；**不要同时运行**桌面端与 IDE |
 | GUI 自动化报 "no visible window" | 绑到了已退出的旧 pid；按窗口标题重新绑定 |
 
 ## 边界

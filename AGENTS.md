@@ -24,20 +24,35 @@
 - 不要用“要我关吗 / 要我装吗”来确认可以直接做的事；直接执行并报告结果。
 - 关闭或重启 IDE 前，假定 IDE 会自动保存；必要时先 `stop-ide.ps1` 优雅退出，超时才强杀。
 
+### 自测边界（用户明确要求）
+
+开发 / 调试插件期间**不要自己做界面自测**：不截图 IDE、不模拟点击或快捷键、不跑 GUI 自动化。
+我负责到「构建 → 替换插件 → 启动 IDE」为止，功能与界面验证交给用户。
+只有用户明确要求「开发完自测」时才做界面验证；启动失败时可以查日志 / 端口 / 进程定位原因，
+但不要用截图或点击来验收界面。
+
 ## 项目入口
 
-- 进度、历史与待办：`HANDOFF.md`
-- 架构依据（源码行号级）：`.agents/docs/architecture.md`
+- 进度与待办：`HANDOFF.md`
+- 架构依据（含官方源码出处）：`.agents/docs/architecture.md`
 - DSH 插件（Cordis 插件，包名 `dsh-plugin-jetbrains`）：`src/main/resources/dsh-plugin-jetbrains/`
-  - Host 半边 `src/index.js`：空入口（无宿主逻辑；profile 注入由 Kotlin `DshBundleBootstrap` 完成）
-  - Client 半边 `src/client.js`：纯 IDE 桥（ideWorkspace / 打开文件 / 插入引用 / 侧栏过滤）
-- 管理功能（检测 JetBrains / 安装卸载本插件 / profile 管理 / 重启服务）：IDEA 插件 `Settings → Tools → DSH`
-  - Kotlin：`settings/`（设置页 UI）、`jetbrains/`（检测 / 安装 / profile 后端）
+  - Host 半边 `src/index.js`：localStorage 快照路由；首次启动经官方 `configEditor` 写入语言/主题
+  - Client 半边 `src/client.js`：IDE 桥（ideWorkspace / 打开文件 / 插入引用 / 侧栏过滤）
+- 管理功能（客户端检测/安装、profile 链接、一键修复、重启服务）：工具窗口右上角齿轮 → 设置弹窗
+  - Kotlin：`settings/`（弹窗）、`client/`（官方客户端适配）、`jetbrains/`（profile 链接 / junction / 文件工具）
 - IDEA 插件（Kotlin，名 `dsh-idea-plugin`）：**仓库根即 Gradle 工程根**（`build.gradle.kts` / `src/` / `gradle/`）
+  - 启动策略：IDE 启动完成后在后台启动宿主，但不展示 DSH 窗口；用户点击右侧 DSH 图标才显示
   - 构建：`./gradlew buildPlugin --offline`
   - 产物：`build/distributions/dsh-idea-plugin-<version>.zip`
 - 部署 IDEA 插件（`dsh-idea-plugin`）：`.agents/skills/deploy-dsh-ide-plugin/`（打包 → 关 IDE → 替换 → 重启 → 验证）
 - 分析官方源码：`.agents/skills/codegraph-dsh-source/`（先查 codegraph 索引，别先 grep）
+
+## 开发约定
+
+- 插件尚未发布，**按全新项目开发**：不写版本迁移 / 旧数据兼容 / 历史修复分支，
+  注释与文档只描述当前行为，不记录「某版本曾…」。发现旧代码直接删除。
+- 迭代期不跑 `test`：打包用 `./gradlew buildPlugin --offline -x test`；
+  需要验证测试源码时用 `./gradlew compileTestKotlin --offline`，发版前再跑完整测试。
 
 ## 本机环境（细节见 skills）
 

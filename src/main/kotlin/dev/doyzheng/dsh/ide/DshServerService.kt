@@ -5,6 +5,9 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.SystemInfo
+import dev.doyzheng.dsh.ide.client.DshClientInstall
+import dev.doyzheng.dsh.ide.client.DshClientProvisioner
+import dev.doyzheng.dsh.ide.jetbrains.ProfileManager
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -81,6 +84,15 @@ class DshServerService : Disposable {
 
     fun stopAsync() = lifecycle.execute { stopInternal() }
 
+    /** 同步等待停止完成（设置弹窗重装运行时/替换 profile 前用），超时返回 false。 */
+    fun stopBlocking(timeoutMs: Long = 30_000): Boolean = runCatching {
+        lifecycle.submit { stopInternal() }.get(timeoutMs, TimeUnit.MILLISECONDS)
+        true
+    }.getOrElse {
+        log.warn("等待 DSH 停止失败", it)
+        false
+    }
+
     fun restartAsync() = lifecycle.execute {
         stopInternal()
         startInternal()
@@ -96,29 +108,55 @@ class DshServerService : Disposable {
 
         val settings = DshSettings.getInstance().current
         publish(DshStatus(DshState.STARTING, port = settings.port))
+        val startedAt = System.nanoTime()
+        fun mark(step: String) {
+            log.info("[启动耗时] $step: ${(System.nanoTime() - startedAt) / 1_000_000} ms")
+        }
 
         val profile = settings.profile.ifBlank { DshSettings.DEFAULT_PROFILE }
+        // profile 默认是指向桌面端 `desktop` 的目录链接，两者共享同一份配置。
+        runCatching { ProfileManager.ensureLinked(profile) }
+            .onSuccess { result ->
+                if (result.ok) {
+                    log.info("profile 就绪: " + result.steps.joinToString("；"))
+                } else {
+                    log.warn("profile 链接检查未通过：${result.error ?: result.steps.joinToString("；")}")
+                }
+            }
+            .onFailure { log.warn("确保 profile 链接失败（继续启动）", it) }
         val profileDir = DshProfileBootstrap.ensure(profile) ?: run {
             publish(DshStatus(DshState.FAILED, detail = "无法创建 profile: $profile"))
             return
         }
-        // ideWorkspace 选中项目、点文件在 IDEA 打开、IDE 右键插入引用、设置页等能力，都由真正的
-        // DSH 插件 `dsh-plugin-jetbrains` 的 Client 半边提供。无论 profile 是引用/复制/新建，
-        // 这里都强制注入该插件：有 bundle 走正常加载，没有则拷贝文件 + `--patch` 覆盖层挂载。
-        val bundlePlan = DshBundleBootstrap.install(profileDir)
-        if (bundlePlan == null) {
+        // ideWorkspace、在 IDE 打开文件、右键插入引用等能力由 DSH 侧插件 `dsh-plugin-jetbrains`
+        // 提供；这里把插件注入 profile，并用 `--patch` 覆盖层挂载。
+        val overlay = DshBundleBootstrap.install(profileDir)
+        if (overlay == null) {
             log.warn("DSH 侧插件注入失败，ideWorkspace/文件桥可能不可用（profile=$profile）")
         } else {
+            log.info("DSH 侧插件: --patch $overlay")
+        }
+        mark("profile 与插件注入完成")
+
+        // 依赖官方桌面客户端：复用其安装目录里携带的运行时（Electron 以 node 模式运行内嵌 CLI）。
+        // 未安装客户端时自动按系统下载安装包并安装（下载较大，放在后台 lifecycle 线程）。
+        val client = if (DshCommandResolver.isAutoConfigured(settings.dshCommand)) {
+            val ensured = runCatching {
+                DshClientProvisioner.ensure { message ->
+                    publish(DshStatus(DshState.STARTING, port = settings.port, detail = message))
+                }
+            }.onFailure { error ->
+                log.warn("准备官方客户端失败", error)
+                publish(DshStatus(DshState.FAILED, detail = "准备客户端失败: ${error.message ?: error}"))
+            }.getOrNull() ?: return
             log.info(
-                "DSH 侧插件: " + if (bundlePlan.viaBundle) "由 profile bundles 加载" else "--patch ${bundlePlan.overlay}",
+                "DSH 客户端就绪: ${ensured.installDir}（版本 ${ensured.version ?: "?"}，Node ${ensured.nodeVersion ?: "?"}）",
             )
+            ensured
+        } else {
+            null
         }
-        // 只提示、不阻塞：workspace 列表是整文件重写，同时使用可能互相覆盖。
-        // 受限环境里 ProcessHandle.allProcesses() 可能抛异常；检测失败一律按「未运行」处理，
-        // 不能让提示逻辑把整个启动流程带进 FAILED。
-        if (settings.warnWhenDesktopRunning && runCatching { isDesktopRunning() }.getOrDefault(false)) {
-            DshNotifier.notifyDesktopRunningOnce()
-        }
+        mark("客户端就绪")
 
         val port = resolveFreePort(settings.port)
         if (port != settings.port) {
@@ -128,12 +166,24 @@ class DshServerService : Disposable {
             settings.port = port
         }
 
-        val tokens = buildCommand(settings, profile, port, bundlePlan?.overlay) ?: return
+        val tokens = buildCommand(settings, profile, port, overlay, client) ?: return
         val pb = ProcessBuilder(tokens)
         // 不设置 DSH_HOME：沿用 DSH 自身解析（$DSH_HOME 或 ~/.dsh），与桌面端共享数据。
         // cwd 用 home 之外的稳定目录，避免继承 IDE 的任意工作目录。
         pb.directory(File(System.getProperty("user.home") ?: "."))
         pb.redirectErrorStream(true)
+        val env = pb.environment()
+        // 首次启动的 DSH 语言/主题：DSH 侧插件读到这两个变量且没有初始化标记时，
+        // 调用官方 configEditor 写入 profile 用户层（不覆盖用户已显式设置的值）。
+        env["DSH_IDE_LOCALE"] = DshProfileAppearance.detectIdeLanguage()
+        env["DSH_IDE_THEME"] = DshProfileAppearance.detectIdeTheme()
+        if (client != null) {
+            // 用客户端自带的 Electron 以 node 模式运行内嵌 CLI；并把它自带的 Node 启动器目录
+            // 放到 PATH 最前面，保证 dsh 派生的子进程（工具、MCP 等）用同一个 Node。
+            env["ELECTRON_RUN_AS_NODE"] = "1"
+            env["DSH_DESKTOP_NODE_EXECUTABLE"] = client.executable.toString()
+            client.runtimeBinDir()?.let { bin -> prependToPath(env, bin) }
+        }
 
         log.info("启动 DSH: ${tokens.joinToString(" ")}")
         val spawned = try {
@@ -145,10 +195,10 @@ class DshServerService : Disposable {
         process = spawned
         stopRequested = false
         startExitWatchdog(spawned.pid())
+        mark("宿主进程已启动")
 
         // 重启时清掉上一轮可能残留的 URL
-        urlSlot.set(null)
-        val url = awaitUrl(spawned, 90_000)
+        val url = awaitUrl(spawned, 120_000)
         if (url == null) {
             val detail = if (spawned.isAlive) "等待 URL 超时" else "进程提前退出（code=${spawned.exitValue()}）"
             killQuietly(spawned)
@@ -156,6 +206,7 @@ class DshServerService : Disposable {
             publish(DshStatus(DshState.FAILED, detail = detail))
             return
         }
+        mark("收到 Web URL")
 
         if (!awaitHealthy(url, 45_000)) {
             killQuietly(spawned)
@@ -163,6 +214,7 @@ class DshServerService : Disposable {
             publish(DshStatus(DshState.FAILED, detail = "健康检查失败"))
             return
         }
+        mark("健康检查通过")
 
         publish(DshStatus(DshState.RUNNING, url = url, port = port))
         watch(spawned)
@@ -171,33 +223,42 @@ class DshServerService : Disposable {
     /**
      * 组装启动命令。解析失败时发布 FAILED 并返回 null，调用方必须据此终止本次启动：
      * 命令不存在时若照样起进程，用户只会看到「进程提前退出」，看不出是命令没找到。
+     *
+     * @param client 官方客户端安装信息；非空时直接 `Electron --expose-internals <cli.js>`。
+     *               为 null 表示用户显式配置了外部 dsh 命令，走 [DshCommandResolver]。
      */
     private fun buildCommand(
         settings: DshSettings.Settings,
         profile: String,
         port: Int,
         dshPluginPatch: java.nio.file.Path?,
+        client: DshClientInstall?,
     ): List<String>? {
-        // 解析职责归 DshCommandResolver：配置 → PATH → 桌面端 runtime，失败时 message 可操作。
-        // resolver 会读文件系统，PATH 里可能存在非法路径（InvalidPathException）等运行时异常；
-        // 异常一旦漏到 lifecycle 线程会被 ScheduledFuture 静默吞掉，状态永远停在 STARTING，
-        // 而 startInternal 开头的 STARTING 判断会挡住重试。所以这里必须兜底成 FAILED。
-        val resolution = runCatching {
-            DshCommandResolver.resolve(settings.dshCommand, System.getenv("PATH"))
-        }.onFailure { error ->
-            log.warn("解析 dsh 命令失败", error)
-            publish(DshStatus(DshState.FAILED, detail = "解析 dsh 命令失败: ${error.message}"))
-        }.getOrNull() ?: return null
-        val base = when (resolution) {
-            is DshCommandResolution.Resolved -> {
-                log.info("DSH 命令来源: ${resolution.source}")
-                resolution.command
-            }
+        val base = if (client != null) {
+            log.info("DSH 命令来源: 官方客户端 ${client.installDir}")
+            client.commandPrefix()
+        } else {
+            // 外部覆盖：解析职责归 DshCommandResolver（显式路径 → PATH）。
+            // resolver 会读文件系统，PATH 里可能存在非法路径（InvalidPathException）等运行时异常；
+            // 异常一旦漏到 lifecycle 线程会被 ScheduledFuture 静默吞掉，状态永远停在 STARTING，
+            // 而 startInternal 开头的 STARTING 判断会挡住重试。所以这里必须兜底成 FAILED。
+            val resolution = runCatching {
+                DshCommandResolver.resolve(settings.dshCommand, System.getenv("PATH"))
+            }.onFailure { error ->
+                log.warn("解析 dsh 命令失败", error)
+                publish(DshStatus(DshState.FAILED, detail = "解析 dsh 命令失败: ${error.message}"))
+            }.getOrNull() ?: return null
+            when (resolution) {
+                is DshCommandResolution.Resolved -> {
+                    log.info("DSH 命令来源: ${resolution.source}")
+                    resolution.command
+                }
 
-            is DshCommandResolution.Missing -> {
-                log.warn(resolution.message)
-                publish(DshStatus(DshState.FAILED, detail = resolution.message))
-                return null
+                is DshCommandResolution.Missing -> {
+                    log.warn(resolution.message)
+                    publish(DshStatus(DshState.FAILED, detail = resolution.message))
+                    return null
+                }
             }
         }
         // 注意：自定义 profile 不能用 `web` 子命令（`web` 是 `--profile web` 的语法糖，
@@ -210,7 +271,17 @@ class DshServerService : Disposable {
                 "--port", port.toString(),
                 "--no-open",
             )
-        return if (SystemInfo.isWindows) listOf("cmd.exe", "/c") + args else args
+        return if (needsWindowsShell(base.first())) listOf("cmd.exe", "/c") + args else args
+    }
+
+    /**
+     * Windows 上只有 `.cmd` / `.bat` / 无扩展名的启动器需要经 `cmd.exe /c`；
+     * 官方客户端直接启动 `DeepSeek Harness.exe`，不需要 cmd（避免含空格路径的转义问题）。
+     */
+    private fun needsWindowsShell(executable: String): Boolean {
+        if (!SystemInfo.isWindows) return false
+        val lower = executable.lowercase()
+        return !lower.endsWith(".exe")
     }
 
     /** 从首选端口开始向上探测，最多 +50；都不可用则回退操作系统分配的端口。 */
@@ -232,30 +303,31 @@ class DshServerService : Disposable {
         true
     }.getOrDefault(false)
 
-    /** 读 stdout 直到出现 `dsh web: http://127.0.0.1:<port>/?token=...`。 */
+    /**
+     * 读 stdout 直到出现 `dsh web: http://127.0.0.1:<port>/?token=...`。
+     * 用阻塞队列把 URL 立即交给启动线程，避免轮询间隔带来的额外等待。
+     */
     private fun awaitUrl(process: Process, timeoutMs: Long): String? {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        val found = java.util.concurrent.LinkedBlockingQueue<String>()
         val reader = BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8))
         val pattern = Regex("""https?://[0-9A-Za-z.\-]+:\d+(?:/[^\s]*)?""")
         val thread = Thread {
             runCatching {
                 reader.lineSequence().forEach { line ->
                     log.info("[dsh] $line")
-                    urlSlot.compareAndSet(null, pattern.find(line)?.value)
+                    pattern.find(line)?.value?.let(found::offer)
                 }
             }
         }
         thread.isDaemon = true
         thread.start()
         while (System.nanoTime() < deadline) {
-            urlSlot.get()?.let { urlSlot.set(null); return it }
+            found.poll(100, TimeUnit.MILLISECONDS)?.let { return it }
             if (!process.isAlive) return null
-            Thread.sleep(200)
         }
         return null
     }
-
-    private val urlSlot = AtomicReference<String?>(null)
 
     private fun awaitHealthy(url: String, timeoutMs: Long): Boolean {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
@@ -364,14 +436,19 @@ class DshServerService : Disposable {
         @JvmStatic
         fun getInstance(): DshServerService =
             ApplicationManager.getApplication().getService(DshServerService::class.java)
-
-        /**
-         * 桌面端是否在运行。两边共享同一个 `$DSH_HOME`，
-         * 会话与凭据有锁保护，但 `storages/` 的 workspace 列表是整文件重写（last-write-wins），
-         * 同时运行可能出现「项目列表少一条 / 顺序变」的情况，所以启动时提示一次。
-         */
-        fun isDesktopRunning(): Boolean = ProcessHandle.allProcesses().anyMatch { handle ->
-            handle.info().command().orElse("").contains("DeepSeek Harness", ignoreCase = true)
-        }
     }
+}
+
+/**
+ * 把 [dir] 插到 PATH 最前面。
+ *
+ * Windows 进程的环境变量块沿用创建者写入的键名大小写（资源管理器启动的进程通常是
+ * `Path`），而 [ProcessBuilder.environment] 返回的是大小写敏感的 Map：直接写
+ * `env["PATH"]` 会新造一个键，同时把原 PATH 读成 null——结果子进程的 PATH 只剩
+ * [dir]，`explorer` / `git` / `npm` 等一律 ENOENT（插件市场「在文件夹中显示」抛
+ * `spawn explorer ENOENT`、宿主随之崩溃即由此引起）。所以必须按键名不区分大小写查找。
+ */
+internal fun prependToPath(env: MutableMap<String, String>, dir: java.nio.file.Path) {
+    val key = env.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
+    env[key] = dir.toString() + File.pathSeparator + env[key].orEmpty()
 }

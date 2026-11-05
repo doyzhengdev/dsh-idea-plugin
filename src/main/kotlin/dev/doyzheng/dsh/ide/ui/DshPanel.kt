@@ -7,25 +7,30 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.fileTypes.ex.FileTypeChooser
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefJSQuery
-import com.intellij.util.ui.JBUI
 import dev.doyzheng.dsh.ide.DshIdeService
+import dev.doyzheng.dsh.ide.DshProfileBootstrap
 import dev.doyzheng.dsh.ide.DshServerService
+import dev.doyzheng.dsh.ide.DshSettings
 import dev.doyzheng.dsh.ide.DshState
 import dev.doyzheng.dsh.ide.DshStatus
 import dev.doyzheng.dsh.ide.DshWebUrl
 import java.awt.BorderLayout
-import java.awt.FlowLayout
+import java.awt.Desktop
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Paths
-import javax.swing.JButton
+import java.util.Locale
 import javax.swing.JPanel
+import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
@@ -48,31 +53,12 @@ class DshPanel(private val project: Project) : Disposable {
     private val ideService: DshIdeService = DshIdeService.getInstance(project)
 
     private val root = JPanel(BorderLayout())
-    private val statusLabel = JBLabel("正在准备 DSH 运行时…")
-
-    /** FAILED 后的产品内重试入口；默认隐藏，仅失败状态展示。平台无 `JBButton`，用 Swing 的 `JButton`。 */
-    private val retryButton = JButton("重试").apply {
-        isVisible = false
-        addActionListener {
-            // 不在 EDT 做 I/O：只调度异步启动；先隐藏按钮，随后的 STARTING 状态会刷新界面。
-            setRetryVisible(false)
-            service.startAsync()
-        }
-    }
-    private val retryRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
-        isOpaque = false
-        border = JBUI.Borders.emptyTop(8)
-        isVisible = false
-        add(retryButton)
-    }
-    private val statusPanel = JPanel(BorderLayout()).apply {
-        border = JBUI.Borders.empty(12)
-        add(statusLabel, BorderLayout.NORTH)
-        add(retryRow, BorderLayout.SOUTH)
-    }
 
     private var browser: JBCefBrowser? = null
     private var loadedUrl: String? = null
+
+    /** 相同状态页不重复加载（下载进度每 5% 会刷新一次文案）。 */
+    private var lastStatusHtml: String? = null
 
     /** DSH 页面 → IDE 的「打开文件」通道；页面里的 `window.__dshIdeOpenFile` 由它注入。 */
     private var openFileQuery: JBCefJSQuery? = null
@@ -81,11 +67,27 @@ class DshPanel(private val project: Project) : Disposable {
     /** DSH 页面 → IDE 的「重启宿主 Web」通道；页面里的 `window.__dshIdeRestartWeb` 由它注入。 */
     private var restartWebQuery: JBCefJSQuery? = null
 
+    /** DSH 页面 → IDE 的「打开外部链接」通道；系统浏览器不可用时回退内置 JCEF。 */
+    private var externalLinkQuery: JBCefJSQuery? = null
+
+    /** 状态页按钮（重试 / 启动）→ Kotlin。 */
+    private var statusActionQuery: JBCefJSQuery? = null
+
+    /** JCEF 原生右键菜单本地化。 */
+    private var contextMenuHandler: DshJcefContextMenuHandler? = null
+
     /** IDE → 页面的「添加到对话」通道：页面加载完成前先排队，`onLoadEnd` 后冲刷。 */
     private val pendingPushes = ArrayDeque<String>()
     private var pageLoaded = false
+    /** 浏览器当前显示的是状态页（不是 DSH 应用）：状态页的 onLoadEnd 不能冲刷推送队列。 */
+    private var showingStatus = true
     private val gson = Gson()
     private val log = thisLogger()
+
+    /** 启动耗时诊断：面板创建 → 首次状态页可见（JCEF 初始化）→ 加载 DSH 页面 → 页面加载完成。 */
+    private val createdAtNanos = System.nanoTime()
+    private var loadUrlAtNanos = 0L
+    private var statusPageLogged = false
 
     private val onStatus: (DshStatus) -> Unit = { status ->
         SwingUtilities.invokeLater { render(status) }
@@ -94,87 +96,142 @@ class DshPanel(private val project: Project) : Disposable {
     val component: JPanel get() = root
 
     init {
-        root.add(statusPanel, BorderLayout.CENTER)
         service.addListener(onStatus)
+        ensureJcefLocale()
+        if (JBCefApp.isSupported()) {
+            val created = JBCefBrowser()
+            browser = created
+            installBridges(created)
+            root.add(created.component, BorderLayout.CENTER)
+            log.info("[dsh] 面板创建，开始初始化 JCEF")
+        } else {
+            root.add(JBLabel("当前 IDE 不支持 JCEF，无法显示 DSH 界面。", SwingConstants.CENTER), BorderLayout.CENTER)
+        }
         render(service.currentStatus())
         ideService.attachPanel(this)
     }
 
     fun onShown() {
-        // 只在工具窗口 content 创建时被调用（DshToolWindowFactory.createToolWindowContent），
-        // 不是每次显示都触发：普通的显示/隐藏不会重跑这里。这里顺带覆盖 STOPPED/FAILED，
-        // 让重建 content（重开项目/IDE）成为一次重试。
+        // 只在工具窗口 content 创建时被调用（DshToolWindowFactory.createToolWindowContent）：
+        // 宿主已由 DshStartupActivity 在启动完成后后台启动，用户点击 DSH 图标创建面板时通常直接
+        // 显示 RUNNING 页面；STOPPED/FAILED（启动失败或手动停止）时这里会重新启动。
+        // 不是每次显示都触发（普通显示/隐藏不会重跑）；STOPPED/FAILED 时重建 content 也算一次重试。
         val state = service.currentStatus().state
         if (state == DshState.STOPPED || state == DshState.FAILED) service.startAsync()
         render(service.currentStatus())
     }
 
+    /**
+     * JCEF 的右键菜单（Copy / Paste...）由 Chromium 的 locale 决定，不是页面语言。
+     * 在 JCEF 尚未启动时把 CefSettings.locale 设成 IDEA 当前语言，
+     * 这样 Chromium 原生菜单会跟随 IDE（中文 IDE → “复制/粘贴”）。
+     */
+    private fun ensureJcefLocale() {
+        if (JBCefApp.isStarted()) return
+        val languageTag = Locale.getDefault().toLanguageTag().ifBlank { "en-US" }
+        runCatching { JBCefApp.getInstance().cefSettings?.locale = languageTag }
+            .onFailure { log.warn("设置 JCEF locale 失败: $languageTag", it) }
+    }
+
     private fun render(status: DshStatus) {
+        val target = browser ?: return
         when (status.state) {
             DshState.RUNNING -> {
                 val url = status.url ?: return
-                setRetryVisible(false)
-                root.remove(statusPanel)
-                val target = browserUrl(url)
-                val existing = browser
-                if (existing == null) {
-                    if (!JBCefApp.isSupported()) {
-                        statusLabel.text = "当前 IDE 不支持 JCEF，无法内嵌 DSH。"
-                        root.add(statusPanel, BorderLayout.CENTER)
-                        root.revalidate()
-                        return
-                    }
-                    val created = JBCefBrowser()
-                    browser = created
-                    installBridges(created)
-                    root.add(created.component, BorderLayout.CENTER)
+                val next = browserUrl(url)
+                if (loadedUrl != next) {
+                    loadedUrl = next
+                    lastStatusHtml = null
+                    showingStatus = false
                     pageLoaded = false
-                    created.loadURL(target)
-                } else if (loadedUrl != target) {
-                    pageLoaded = false
-                    existing.loadURL(target)
+                    loadUrlAtNanos = System.nanoTime()
+                    log.info("[dsh] 宿主就绪，加载运行页面（面板创建后 ${(loadUrlAtNanos - createdAtNanos) / 1_000_000} ms）")
+                    target.loadURL(next)
                 }
-                loadedUrl = target
-                root.revalidate()
-                root.repaint()
             }
             DshState.STARTING -> {
-                statusLabel.text = "正在启动 DSH（端口 ${status.port}）…"
-                setRetryVisible(false)
-                showStatusPanel()
+                val detail = status.detail.orEmpty()
+                val downloading = detail.contains("下载") || detail.contains("未检测到")
+                val installing = !downloading &&
+                    (detail.contains("安装") || detail.contains("等待") || detail.contains("复制"))
+                val title = when {
+                    downloading -> "正在下载 DeepSeek Harness"
+                    installing -> "正在安装 DeepSeek Harness"
+                    else -> "正在启动 DSH"
+                }
+                val description = when {
+                    downloading -> "$detail\n首次使用需要下载安装官方客户端，可能需要几分钟。"
+                    installing -> detail
+                    detail.isBlank() || detail.startsWith("已检测到") -> "端口 ${status.port}"
+                    else -> detail
+                }
+                showStatusPage(
+                    title = title,
+                    detail = description,
+                    action = null,
+                    loading = true,
+                    progress = downloading || installing,
+                )
             }
-            DshState.FAILED -> {
-                statusLabel.text = "DSH 启动失败：${status.detail ?: "未知原因"}"
-                // 仅 FAILED 暴露「重试」入口：改完设置（命令/端口等）点一下即可重新启动。
-                // RUNNING 中改设置没有运行中重启入口，需重启 IDE 或服务。
-                setRetryVisible(true)
-                showStatusPanel()
-            }
-            DshState.STOPPED -> {
-                statusLabel.text = "DSH 未运行。"
-                setRetryVisible(false)
-                showStatusPanel()
-            }
+            DshState.FAILED -> showStatusPage(
+                title = "DSH 启动失败",
+                detail = status.detail ?: "未知原因",
+                action = StatusAction("retry", "重试"),
+                loading = false,
+            )
+            DshState.STOPPED -> showStatusPage(
+                title = "DSH 未运行",
+                detail = "点击下方按钮启动，或从右上角齿轮打开设置。",
+                action = StatusAction("start", "启动 DSH"),
+                loading = false,
+            )
         }
     }
 
-    private fun setRetryVisible(visible: Boolean) {
-        if (retryRow.isVisible == visible && retryButton.isVisible == visible) return
-        retryRow.isVisible = visible
-        retryButton.isVisible = visible
-        statusPanel.revalidate()
-        statusPanel.repaint()
+    private data class StatusAction(val id: String, val label: String)
+
+    /**
+     * 用 HTML 渲染状态页：居中、加载动画和按钮样式全部交给 CSS。
+     * 浏览器始终留在布局里，只切换页面内容，避免 JCEF 原生画面盖住 Swing 状态页。
+     */
+    private fun showStatusPage(
+        title: String,
+        detail: String,
+        action: StatusAction?,
+        loading: Boolean,
+        progress: Boolean = false,
+    ) {
+        val target = browser ?: return
+        val html = statusHtml(title, detail, action, loading, progress)
+        if (html == lastStatusHtml) return
+        lastStatusHtml = html
+        showingStatus = true
+        target.loadHTML(html)
     }
 
-    private fun showStatusPanel() {
-        if (browser != null) {
-            // 保持浏览器画面，只在状态卡可见时叠加（骨架阶段简单处理：切换回状态卡）
-        }
-        if (statusPanel.parent == null) {
-            root.add(statusPanel, BorderLayout.CENTER)
-            root.revalidate()
-            root.repaint()
-        }
+    private fun statusHtml(
+        title: String,
+        detail: String,
+        action: StatusAction?,
+        loading: Boolean,
+        progress: Boolean,
+    ): String {
+        val spinner = if (loading) """<div class="spinner"></div>""" else ""
+        val bar = if (progress) """<div class="bar"></div>""" else ""
+        val button = action?.let {
+            """<button type="button" onclick="act('${it.id}')">${HtmlPages.escape(it.label)}</button>"""
+        } ?: ""
+        return HtmlPages.render(
+            "status.html",
+            mapOf(
+                "THEME" to if (JBColor.isBright()) "light" else "dark",
+                "SPINNER" to spinner,
+                "TITLE" to HtmlPages.escape(title),
+                "DETAIL" to HtmlPages.escape(detail),
+                "BAR" to bar,
+                "BUTTON" to button,
+            ),
+        )
     }
 
     /**
@@ -208,12 +265,37 @@ class DshPanel(private val project: Project) : Disposable {
             service.restartAsync()
             null
         }
+        // 「打开外部链接」：尽量用系统默认浏览器；没有可用系统浏览器时回退内置 JCEF。
+        val externalQuery = JBCefJSQuery.create(target)
+        externalQuery.addHandler { url ->
+            openExternalUrl(url)
+            null
+        }
+        // 状态页按钮（重试 / 启动）→ Kotlin。
+        val statusQuery = JBCefJSQuery.create(target)
+        statusQuery.addHandler { action ->
+            if (action == "retry" || action == "start") {
+                SwingUtilities.invokeLater { service.startAsync() }
+            }
+            null
+        }
+        // DSH 设置页的「打开配置文件」在 JCEF 里调宿主原生打开容易被系统文件关联拦截；
+        // 把 profile 的 cordis.patch.yml 路径注入页面，Client 半边会把它交给 IDE 打开。
+        val profile = DshSettings.getInstance().current.profile.ifBlank { DshSettings.DEFAULT_PROFILE }
+        val settingsDocumentPath = DshProfileBootstrap.profileDir(profile)
+            .resolve("cordis.patch.yml")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
         // __dshIdePush 设一个「页面侧还没装好就排队」的中转：客户端补丁 apply 时把
         // __dshIdeInsertRefs 注册进来并冲刷队列（见 client.js 的 installComposerBridge）。
         val script = """
             window.__dshIdeOpenFile = function(payload) { ${query.inject("payload")} };
             window.__dshIdeRestartWeb = function(reason) { ${restartQuery.inject("reason")} };
-            window.__dshIdeHost = { version: "0.2.1", restartWeb: true };
+            window.__dshIdeOpenExternal = function(url) { ${externalQuery.inject("url")} };
+            window.__dshIdeStatusAction = function(action) { ${statusQuery.inject("action")} };
+            window.__dshIdeSettingsDocument = ${gson.toJson(settingsDocumentPath)};
+            window.__dshIdeHost = { version: "0.8.0", restartWeb: true };
             (function () {
               window.__dshIdePendingPushes = window.__dshIdePendingPushes || [];
               window.__dshIdePush = function (json) {
@@ -226,15 +308,31 @@ class DshPanel(private val project: Project) : Disposable {
             override fun onLoadEnd(cefBrowser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
                 if (frame?.isMain == true && cefBrowser != null) {
                     cefBrowser.executeJavaScript(script, cefBrowser.url, 0)
-                    pageLoaded = true
-                    drainPendingPushes()
+                    // 状态页（data: 页面）加载完成不能算 DSH 应用就绪，否则会把排队的推送丢掉。
+                    if (!showingStatus) {
+                        pageLoaded = true
+                        drainPendingPushes()
+                        log.info(
+                            "[dsh] 运行页面加载完成（loadURL 后 ${(System.nanoTime() - loadUrlAtNanos) / 1_000_000} ms）",
+                        )
+                    } else if (!statusPageLogged) {
+                        statusPageLogged = true
+                        log.info(
+                            "[dsh] 状态页加载完成（面板创建后 ${(System.nanoTime() - createdAtNanos) / 1_000_000} ms）",
+                        )
+                    }
                 }
             }
         }
         target.jbCefClient.addLoadHandler(handler, target.cefBrowser)
+        val menuHandler = DshJcefContextMenuHandler()
+        target.jbCefClient.addContextMenuHandler(menuHandler, target.cefBrowser)
         openFileQuery = query
         restartWebQuery = restartQuery
+        externalLinkQuery = externalQuery
+        statusActionQuery = statusQuery
         openFileLoadHandler = handler
+        contextMenuHandler = menuHandler
     }
 
     /**
@@ -269,6 +367,33 @@ class DshPanel(private val project: Project) : Disposable {
         }
     }
 
+    /**
+     * 打开外部链接：优先系统默认浏览器；系统无可用浏览器时回退内置 JCEF 窗口。
+     */
+    private fun openExternalUrl(rawUrl: String) {
+        val url = rawUrl.trim()
+        if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) return
+        val uri = runCatching { URI(url) }.getOrNull() ?: return
+        val opened = runCatching {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(uri)
+                true
+            } else {
+                false
+            }
+        }.getOrDefault(false)
+        if (opened) {
+            log.info("外部链接已交给系统浏览器: $url")
+            return
+        }
+        log.info("系统浏览器不可用，回退内置 JCEF: $url")
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed && JBCefApp.isSupported()) {
+                DshExternalBrowserDialog(project, url).show()
+            }
+        }
+    }
+
     /** payload 是页面传来的 JSON `{ path, line?, column? }`；解析失败只告警，不影响页面。 */
     private fun handleOpenFileRequest(payload: String) {
         val json = runCatching { JsonParser.parseString(payload).asJsonObject }.getOrNull()
@@ -297,6 +422,13 @@ class DshPanel(private val project: Project) : Disposable {
             return
         }
         val virtualFile = LocalFileSystem.getInstance().findFileByNioFile(resolved) ?: return
+        // 所有文件先让 IDE 判断类型：已知扩展按 IDE 编辑器打开；未知扩展弹出 IDEA
+        // 的「选择文件类型/关联」对话框（FileTypeChooser.getKnownFileTypeOrAssociate）。
+        val fileType = runCatching { FileTypeChooser.getKnownFileTypeOrAssociate(virtualFile, project) }.getOrNull()
+        if (fileType == null) {
+            log.info("用户取消文件类型选择: $resolved")
+            return
+        }
         val descriptor = if (line > 0) {
             OpenFileDescriptor(project, virtualFile, maxOf(line - 1, 0), maxOf(column - 1, 0))
         } else {
@@ -314,13 +446,21 @@ class DshPanel(private val project: Project) : Disposable {
             openFileLoadHandler?.let { handler ->
                 runCatching { target.jbCefClient.removeLoadHandler(handler, target.cefBrowser) }
             }
+            contextMenuHandler?.let { handler ->
+                runCatching { target.jbCefClient.removeContextMenuHandler(handler, target.cefBrowser) }
+            }
             Disposer.dispose(target)
         }
         openFileLoadHandler = null
+        contextMenuHandler = null
         openFileQuery?.dispose()
         openFileQuery = null
         restartWebQuery?.dispose()
         restartWebQuery = null
+        externalLinkQuery?.dispose()
+        externalLinkQuery = null
+        statusActionQuery?.dispose()
+        statusActionQuery = null
         browser = null
     }
 }

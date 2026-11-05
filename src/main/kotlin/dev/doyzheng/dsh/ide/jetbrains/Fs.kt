@@ -2,8 +2,10 @@ package dev.doyzheng.dsh.ide.jetbrains
 
 import com.intellij.openapi.util.SystemInfo
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.DosFileAttributes
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -109,25 +111,20 @@ internal object Links {
 
     fun inspect(path: Path): Info {
         if (!SystemInfo.isWindows) return inspectNio(path)
-        val script = """
-            ${'$'}p = Get-Item -LiteralPath ${Fs.ps(path.toString())} -Force -ErrorAction SilentlyContinue
-            if (${'$'}p -eq ${'$'}null) { 'MISSING' }
-            elseif (${'$'}p.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-              ${'$'}t = ${'$'}p.Target
-              if (${'$'}t -is [array]) { ${'$'}t = ${'$'}t[0] }
-              'LINK|' + [string]${'$'}t
-            }
-            elseif (${'$'}p.PSIsContainer) { 'DIR' } else { 'FILE' }
-        """.trimIndent()
-        val line = Fs.powershell(script, 30).output.trim()
-            .lineSequence().lastOrNull { it.isNotBlank() } ?: "MISSING"
-        return when {
-            line == "MISSING" -> Info("missing", null)
-            line.startsWith("LINK|") -> Info("link", line.removePrefix("LINK|").trim().ifBlank { null })
-            line == "DIR" -> Info("dir", null)
-            line == "FILE" -> Info("file", null)
-            else -> Info("missing", null)
+        // 用 NIO 判断 junction / 符号链接：这里在 dsh 启动热路径上，冷启动 powershell.exe
+        // 每次要几百毫秒到几秒（还会叠加杀毒扫描），改成纯 NIO 后整个检查是微秒级。
+        if (Files.isSymbolicLink(path)) {
+            return Info("link", runCatching { Files.readSymbolicLink(path).toString() }.getOrNull())
         }
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return Info("missing", null)
+        val reparsePoint = runCatching {
+            Files.readAttributes(path, DosFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS).isOther
+        }.getOrDefault(false)
+        if (reparsePoint) {
+            // junction：NIO 不直接暴露 target；链接有效时 toRealPath 能解析出目标，断链时为 null。
+            return Info("link", runCatching { path.toRealPath().toString() }.getOrNull())
+        }
+        return if (Files.isDirectory(path)) Info("dir", null) else Info("file", null)
     }
 
     private fun inspectNio(path: Path): Info = runCatching {

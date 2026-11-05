@@ -1,0 +1,127 @@
+<!doctype html>
+<html data-theme="{{THEME}}">
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #6e7781;
+  --line: rgba(31, 35, 40, .12);
+  --accent: #3b82f6;
+  --success: #1a7f37;
+  --error: #cf222e;
+}
+:root[data-theme="dark"] {
+  --bg: #1e1f22;
+  --fg: #dfe1e5;
+  --muted: #9da0a8;
+  --line: rgba(223, 225, 229, .14);
+  --accent: #4c8dff;
+  --success: #3fb950;
+  --error: #f85149;
+}
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+}
+.page { box-sizing: border-box; height: 100%; padding: 18px 20px; }
+.actions { display: flex; gap: 8px; }
+button {
+  font: inherit;
+  padding: 6px 16px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--line); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+button:disabled { opacity: .5; cursor: default; }
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 16px;
+}
+.status[data-kind="success"] { color: var(--success); }
+.status[data-kind="error"] { color: var(--error); }
+.spinner {
+  display: none;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+.status[data-busy="true"] .spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.divider { height: 1px; background: var(--line); margin: 18px 0 16px; }
+.grid { display: grid; grid-template-columns: 84px 1fr; gap: 10px 14px; align-items: baseline; }
+.label { color: var(--muted); }
+.value { min-width: 0; overflow-wrap: anywhere; }
+.strong { font-weight: 600; }
+.path { cursor: pointer; }
+.path:hover { text-decoration: underline; color: var(--accent); }
+.path.disabled { color: var(--muted); cursor: default; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="actions">
+    <button id="restart" class="primary" onclick="act('restart')">重启 DSH 服务</button>
+    <button id="repair" onclick="act('repair')">一键修复</button>
+  </div>
+  <div class="status" id="status" data-kind="info" data-busy="false"><span class="spinner"></span><span id="status-text">就绪</span></div>
+  <div class="divider"></div>
+  <div class="grid">
+    <div class="label">服务</div><div class="value" id="service">—</div>
+    <div class="label">Profile</div><div class="value"><span class="strong" id="profile-name">—</span><br><span class="path" id="profile-path" onclick="act('open-profile')">—</span></div>
+    <div class="label">客户端</div><div class="value path" id="client-dir" onclick="act('open-client')">—</div>
+    <div class="label">版本</div><div class="value" id="versions">—</div>
+  </div>
+</div>
+<script>
+function act(action) {
+  if (window.__dshIdeSettingsAction) window.__dshIdeSettingsAction(action);
+}
+window.__dshIdeSettingsUpdate = function (s) {
+  document.getElementById('service').textContent = (s.host || '—') + (s.port ? ':' + s.port : '');
+  document.getElementById('profile-name').textContent = s.profile || '—';
+  var path = document.getElementById('profile-path');
+  path.textContent = s.profilePath || '正在读取…';
+  path.title = s.profileLink ? (s.profilePath + ' → ' + s.profileLink) : (s.profilePath || '');
+  var dir = document.getElementById('client-dir');
+  if (!s.clientKnown) {
+    dir.textContent = '正在读取…';
+    dir.classList.add('disabled');
+  } else if (s.clientDir) {
+    dir.textContent = s.clientDir;
+    dir.classList.remove('disabled');
+  } else {
+    dir.textContent = '未检测到（启动时自动下载安装）';
+    dir.classList.add('disabled');
+  }
+  var versions = [];
+  if (s.clientVersion) versions.push('客户端 ' + s.clientVersion);
+  if (s.nodeVersion) versions.push('Node ' + s.nodeVersion);
+  document.getElementById('versions').textContent = versions.length ? versions.join(' · ') : '—';
+  var status = document.getElementById('status');
+  status.dataset.kind = s.messageKind || 'info';
+  status.dataset.busy = s.busy ? 'true' : 'false';
+  document.getElementById('status-text').textContent = s.message || '';
+  ['repair', 'restart'].forEach(function (id) { document.getElementById(id).disabled = !!s.busy; });
+};
+</script>
+</body>
+</html>
